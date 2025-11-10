@@ -1,0 +1,1075 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>mycalendar24</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      :root{
+        /* Apple-like light theme (neutral, no blue) */
+        --bg:#f5f5f7;
+        --bg-soft:#ffffff;
+        --card:#ffffff;
+        --card-soft:#fafafa;
+        --border-subtle:#e5e7eb;
+        --accent:#111827;          /* near-black */
+        --accent-soft:#111827;
+        --accent-strong:#000000;
+        --text-main:#0b0b0c;       /* black text */
+        --text-muted:#6b7280;      /* gray-500 */
+        --danger:#ef4444;
+      }
+
+      *{box-sizing:border-box}
+
+      body{
+        font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,"Segoe UI",sans-serif;
+        margin:0;
+        padding:12px;
+        background: radial-gradient(circle at 50% -20%, #ffffff 0, #f5f5f7 55%);
+        color:var(--text-main);
+      }
+
+      .layout{max-width:1120px;margin:0 auto}
+
+      h1{margin:0;font-size:26px;font-weight:700;letter-spacing:.08em}
+
+      .brand-row{
+        display:flex;align-items:center;justify-content:center;gap:8px;
+        margin:8px 0 14px;text-align:center
+      }
+
+      .top-nav{
+        display:inline-flex;border-radius:999px;padding:3px;
+        background:#f4f4f5;border:1px solid var(--border-subtle);
+        box-shadow:0 10px 25px rgba(0,0,0,.05);margin-bottom:4px
+      }
+      .top-nav button{
+        border:none;background:transparent;color:var(--text-muted);
+        font-size:13px;padding:7px 16px;border-radius:999px;cursor:pointer
+      }
+      .top-nav button.active{
+        background:#ffffff;color:var(--accent);
+        box-shadow:0 1px 0 0 var(--border-subtle) inset
+      }
+
+      .logout-link{font-size:12px;color:var(--text-muted);cursor:pointer;margin-left:10px;text-decoration:underline}
+
+      h2{margin:0 0 8px 0;font-size:17px}
+
+      .panel{
+        background:var(--card);border-radius:18px;padding:12px 16px 14px;margin-bottom:12px;
+        border:1px solid var(--border-subtle);box-shadow:0 10px 30px rgba(0,0,0,.06)
+      }
+      .panel-header{display:flex;justify-content:space-between;align-items:center;gap:8px}
+
+      .field{margin-bottom:8px}
+      .field label{display:block;font-size:12px;margin-bottom:4px;color:var(--text-muted)}
+      .field input,.field select,.field textarea{
+        width:100%;padding:8px 10px;border-radius:10px;border:1px solid #d1d5db;
+        font-size:14px;background:#ffffff;color:var(--text-main);outline:none
+      }
+      .field input:focus,.field select:focus,.field textarea:focus{
+        border-color:#111827;box-shadow:0 0 0 2px rgba(0,0,0,.08)
+      }
+
+      input[type="date"]::-webkit-calendar-picker-indicator,
+      input[type="time"]::-webkit-calendar-picker-indicator{opacity:.7;cursor:pointer}
+
+      #jumpDate{
+        padding:4px 8px;font-size:12px;border-radius:999px;border:1px solid #d1d5db;background:#fff;color:var(--text-main);outline:none
+      }
+
+      .field-row{display:flex;gap:8px}.field-row .field{flex:1}
+
+      .btn{
+        display:inline-flex;align-items:center;justify-content:center;padding:8px 14px;border-radius:999px;
+        border:1px solid #d1d5db;background:#fff;font-size:13px;color:var(--accent);cursor:pointer;gap:6px
+      }
+      .btn:hover{border-color:#9ca3af}
+      .btn.primary{
+        background:#111827;border-color:#111827;color:#ffffff;
+        box-shadow:0 8px 20px rgba(0,0,0,.12)
+      }
+      .btn.primary:hover{filter:brightness(1.03)}
+      .btn-link{border:none;background:none;color:var(--accent);text-decoration:underline;padding:0;font-size:13px;cursor:pointer}
+
+      .filters{margin-bottom:10px;display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+      .filters button{padding:5px 12px;border-radius:999px;border:1px solid #d1d5db;background:#fff;cursor:pointer;font-size:12px;color:var(--accent)}
+      .filters button.active{background:#111827;color:#fff;border-color:#111827}
+
+      #status{font-size:13px;color:var(--text-muted);margin-bottom:8px}
+
+      .date-group{
+        background:var(--card-soft);border-radius:18px;padding:10px 14px;margin-bottom:10px;border:1px solid var(--border-subtle)
+      }
+      .date-title{font-weight:600;margin-bottom:6px;font-size:14px}
+
+      .appointment{
+        border-top:1px solid var(--border-subtle);padding:7px 0;display:flex;justify-content:space-between;align-items:center;cursor:pointer
+      }
+      .appointment:first-child{border-top:none}
+      .appointment:hover{background:#fafafa}
+      .appointment.block-appointment{background:#f3f4f6;cursor:default}
+
+      .left{display:flex;flex-direction:column}
+      .time{font-weight:600;margin-bottom:2px;font-size:13px}
+      .client{font-size:14px}
+      .service{font-size:13px;color:var(--text-muted)}
+      .status{font-size:11px;margin-top:2px;color:#a16207}
+      .block-label-text{font-size:13px}
+      .block-meta-text{font-size:12px;color:var(--text-muted)}
+
+      .right{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+      .btn-sm{font-size:11px;padding:3px 7px;border-radius:999px;border:1px solid #d1d5db;background:#fff;cursor:pointer;color:var(--accent)}
+      .btn-sm.cancel{border-color:#fecaca;color:#b91c1c;background:#fff}
+      .btn-sm.move{border-color:#111827;color:#111827}
+      .btn-sm.block-edit{border-color:#111827;color:#111827}
+
+      .loading-overlay{position:fixed;inset:0;background:rgba(0,0,0,.15);backdrop-filter:saturate(140%) blur(2px);display:none;align-items:center;justify-content:center;z-index:999}
+      .loading-box{padding:14px 20px;border-radius:999px;background:#fff;color:#111827;font-size:16px;font-weight:600;border:1px solid #e5e7eb}
+
+      .view-toggle{display:flex;gap:8px;margin:8px 0 10px;align-items:center;flex-wrap:wrap}
+      .view-toggle button{padding:5px 12px;border-radius:999px;border:1px solid #d1d5db;background:#fff;cursor:pointer;font-size:12px;color:var(--accent)}
+      .view-toggle button.active{background:#111827;color:#fff;border-color:#111827}
+
+      #calendarContainer{margin-bottom:12px}
+      .calendar-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+      .calendar-header-title{font-weight:600;font-size:14px}
+      .calendar-nav{display:flex;gap:4px}
+      .calendar-nav button{padding:3px 8px;border-radius:999px;border:1px solid #d1d5db;background:#fff;cursor:pointer;font-size:11px;color:var(--accent)}
+
+      .week-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+      .week-day{background:#ffffff;border-radius:14px;padding:6px 8px;font-size:12px;border:1px solid var(--border-subtle);min-height:92px;display:flex;flex-direction:column}
+      .week-day-header{font-weight:600;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center}
+      .week-day-label{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted)}
+      .week-day-number{font-size:13px}
+      .week-day.today{border-color:#111827;box-shadow:0 0 0 1px rgba(0,0,0,.12)}
+      .week-day-appointments{margin-top:4px;display:flex;flex-direction:column;gap:2px}
+      .week-appt-pill{border-radius:10px;background:#f3f4f6;padding:2px 4px;font-size:11px;cursor:pointer}
+      .week-appt-pill:hover{background:#e5e7eb}
+      .week-block-pill{background:#e5e7eb}
+
+      .month-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+      .month-weekday-header{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);padding:4px 0;text-align:center}
+      .month-day{background:#ffffff;border-radius:14px;padding:4px 6px;font-size:11px;min-height:74px;border:1px solid var(--border-subtle);display:flex;flex-direction:column}
+      .month-day.outside{background:#fafafa;color:#9ca3af}
+      .month-day-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:2px}
+      .month-day-number{font-weight:600;font-size:11px}
+      .month-day.today{border-color:#111827}
+      .month-day-dots{margin-top:2px;display:flex;flex-wrap:wrap;gap:2px}
+      .month-dot{border-radius:999px;padding:1px 4px;background:#f3f4f6;font-size:10px;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:pointer}
+      .month-dot-more{background:#e5e7eb}
+      .month-dot-block{background:#e5e7eb}
+
+      .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.15);display:none;align-items:center;justify-content:center;z-index:998}
+      .modal{background:#fff;border-radius:18px;padding:14px 16px;width:95%;max-width:380px;border:1px solid #e5e7eb;box-shadow:0 24px 60px rgba(0,0,0,.08)}
+      .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+      .modal-title{font-size:15px;font-weight:600}
+      .modal-close{border:none;background:none;color:#6b7280;cursor:pointer;font-size:18px;line-height:1}
+      .modal-row{font-size:13px;margin-bottom:4px}
+      .modal-label{color:var(--text-muted)}
+
+      #toast{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);background:#111827;color:#fff;padding:8px 14px;border-radius:999px;font-size:13px;box-shadow:0 18px 40px rgba(0,0,0,.18);opacity:0;pointer-events:none;transition:opacity .2s ease-out,transform .2s ease-out;z-index:1000}
+      #toast.visible{opacity:1;transform:translateX(-50%) translateY(-4px)}
+
+      .clients-layout{display:grid;grid-template-columns:minmax(0,260px) minmax(0,1fr);gap:12px}
+      .client-list-item{padding:6px 8px;border-radius:10px;cursor:pointer;display:flex;flex-direction:column;gap:1px}
+      .client-list-item:hover{background:#f4f4f5}
+      .client-list-item.active{background:#f3f4f6;border:1px solid #e5e7eb}
+      .client-list-name{font-size:13px;font-weight:500}
+      .client-list-meta{font-size:11px;color:var(--text-muted)}
+
+      .stat-row{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+      .stat-card{flex:1;min-width:110px;background:#fff;border-radius:12px;padding:8px 10px;border:1px solid #e5e7eb}
+      .stat-label{font-size:11px;color:var(--text-muted)}
+      .stat-value{font-size:15px;font-weight:600;margin-top:2px}
+
+      .block-item{border-top:1px solid #e5e7eb;padding:6px 0;font-size:12px}
+      .block-item:first-child{border-top:none}
+      .block-type{font-size:11px;color:var(--text-muted)}
+
+      .login-overlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.05)}
+      .login-card{background:#fff;padding:18px;border-radius:18px;width:100%;max-width:360px;border:1px solid #e5e7eb;box-shadow:0 24px 60px rgba(0,0,0,.06)}
+      .login-card h2{margin:0 0 6px;font-size:18px}
+      .login-card p{margin:0 0 10px;font-size:12px;color:var(--text-muted)}
+      .login-hint{margin-top:8px;font-size:11px;color:var(--text-muted)}
+
+      @media (max-width:900px){
+        .week-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+        .clients-layout{grid-template-columns:minmax(0,1fr)}
+      }
+      @media (max-width:640px){
+        body{padding:10px}
+        h1{font-size:20px;letter-spacing:.06em}
+        .week-grid{grid-template-columns:repeat(1,minmax(0,1fr))}
+        .field-row{flex-direction:column}
+      }
+    </style>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  </head>
+  <body>
+    <!-- Login -->
+    <div id="loginSection" class="login-overlay">
+      <div class="login-card">
+        <h2>Sign in</h2>
+        <p>Only owners/staff can access MYCALENDAR24.</p>
+        <div class="field"><label for="loginEmail">Email</label><input type="email" id="loginEmail" /></div>
+        <div class="field"><label for="loginPassword">Password</label><input type="password" id="loginPassword" /></div>
+        <button class="btn primary" style="width:100%;" onclick="handleLogin()">Sign in</button>
+        <div class="login-hint">Accounts are created in Supabase Auth. Clients cannot log in here.</div>
+      </div>
+    </div>
+
+    <!-- App root -->
+    <div id="appRoot" style="display:none;">
+      <div class="layout">
+        <div class="brand-row"><h1>MYCALENDAR24</h1></div>
+
+        <div class="brand-row">
+          <div class="top-nav">
+            <button id="navCalendar" class="active" onclick="setSection('calendar')">Calendar</button>
+            <button id="navClients" onclick="setSection('clients')">Clients</button>
+            <button id="navBlocks" onclick="setSection('blocks')">Blocks</button>
+            <button id="navExport" onclick="setSection('export')">Export</button>
+          </div>
+          <span class="logout-link" onclick="handleLogout()">Sign out</span>
+        </div>
+
+        <!-- Loading overlay -->
+        <div id="loadingOverlay" class="loading-overlay"><div class="loading-box">Loading…</div></div>
+
+        <!-- Toast -->
+        <div id="toast"></div>
+
+        <!-- Appointment modal -->
+        <div id="appointmentModal" class="modal-overlay">
+          <div class="modal">
+            <div class="modal-header">
+              <div class="modal-title">Appointment</div>
+              <button class="modal-close" onclick="closeAppointmentModal()">&times;</button>
+            </div>
+            <div id="modalBody"></div>
+            <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:10px;">
+              <button class="btn-sm move" onclick="moveFromModal()">Move</button>
+              <button class="btn-sm cancel" onclick="cancelFromModal()">Cancel</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- CALENDAR SECTION -->
+        <div id="calendarSection">
+          <div class="panel">
+            <div class="panel-header">
+              <h2>New appointment</h2>
+              <button class="btn-link" onclick="toggleNewClientPanel(true)">+ New client</button>
+            </div>
+
+            <div class="field">
+              <label for="clientSelect">Client</label>
+              <input type="text" id="clientSearchBooking" placeholder="Search by name, phone or email" oninput="filterClientsForBooking()"
+                style="margin-bottom:4px; font-size:12px; padding:6px 10px; border-radius:8px; border:1px solid #d1d5db; background:#fff; color:var(--text-main);" />
+              <select id="clientSelect"></select>
+            </div>
+
+            <div class="field">
+              <label for="staffSelect">Employee</label>
+              <select id="staffSelect"></select>
+            </div>
+
+            <div class="field">
+              <label for="serviceSelect">Service</label>
+              <select id="serviceSelect"></select>
+            </div>
+
+            <div class="field-row">
+              <div class="field">
+                <label for="appointmentDate">Date</label>
+                <input type="date" id="appointmentDate" />
+              </div>
+              <div class="field">
+                <label for="appointmentTime">Time (15 min steps)</label>
+                <input type="time" id="appointmentTime" step="900" />
+              </div>
+            </div>
+
+            <button class="btn primary" onclick="saveAppointment()">Save appointment</button>
+          </div>
+
+          <!-- New Client -->
+          <div class="panel" id="newClientPanel" style="display:none;">
+            <div class="panel-header">
+              <h2>New client</h2>
+              <button class="btn-link" onclick="toggleNewClientPanel(false)">Close</button>
+            </div>
+            <div class="field"><label for="newClientName">Name</label><input type="text" id="newClientName" placeholder="Client name" /></div>
+            <div class="field"><label for="newClientPhone">Phone (+356…)</label><input type="text" id="newClientPhone" placeholder="+356…" /></div>
+            <div class="field"><label for="newClientEmail">Email</label><input type="email" id="newClientEmail" placeholder="name@example.com" /></div>
+            <div class="field"><label for="newClientNotes">Notes (optional)</label><textarea id="newClientNotes" rows="2"></textarea></div>
+            <button class="btn primary" onclick="saveNewClient()">Save client</button>
+          </div>
+
+          <!-- View toggle -->
+          <div class="view-toggle">
+            <span style="font-size:12px; color:var(--text-muted);">View:</span>
+            <button id="viewListBtn" class="active" onclick="setMainView('list')">List</button>
+            <button id="viewWeekBtn" onclick="setMainView('week')">Week</button>
+            <button id="viewMonthBtn" onclick="setMainView('month')">Month</button>
+          </div>
+
+          <div id="calendarContainer"></div>
+
+          <!-- Filters + list -->
+          <div class="filters" id="listFilters">
+            <button onclick="setRangeFilter(0, this)">Today</button>
+            <button onclick="loadTomorrow(this)">Tomorrow</button>
+            <button onclick="setRangeFilter(7, this)">Next 7 days</button>
+            <button onclick="setRangeFilter(30, this)">Next 30 days</button>
+            <button onclick="setRangeFilter('', this)">All future</button>
+
+            <span style="margin-left:16px; font-size:12px; display:flex; align-items:center; gap:4px;">
+              <label for="jumpDate">Go to:</label>
+              <input type="date" id="jumpDate" />
+              <button class="btn" style="padding:4px 10px; font-size:12px;" onclick="jumpToPickedDate()">Go</button>
+            </span>
+          </div>
+
+          <div id="status"></div>
+          <div id="appointments"></div>
+        </div>
+
+        <!-- CLIENTS -->
+        <div id="clientsSection" style="display:none;">
+          <div class="panel">
+            <div class="panel-header"><h2>Clients</h2></div>
+
+            <div class="clients-layout">
+              <div>
+                <div class="field" style="margin-bottom:6px;">
+                  <input type="text" id="clientSearchList" placeholder="Search clients" oninput="renderClientList()" />
+                </div>
+                <div id="clientList" style="max-height:420px; overflow:auto;"></div>
+              </div>
+
+              <div id="clientDetail">
+                <div style="font-size:13px; color:var(--text-muted);">
+                  Select a client to see stats (appointments, last visit, total revenue).
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- BLOCKS -->
+        <div id="blocksSection" style="display:none;">
+          <div class="panel">
+            <div class="panel-header"><h2>Blocked times</h2></div>
+            <div class="field"><label for="blockStaff">Employee</label><select id="blockStaff"></select></div>
+            <div class="field-row">
+              <div class="field"><label for="blockFromDate">From date</label><input type="date" id="blockFromDate" /></div>
+              <div class="field"><label for="blockFromTime">From time</label><input type="time" id="blockFromTime" /></div>
+            </div>
+            <div class="field-row">
+              <div class="field"><label for="blockToDate">To date</label><input type="date" id="blockToDate" /></div>
+              <div class="field"><label for="blockToTime">To time</label><input type="time" id="blockToTime" /></div>
+            </div>
+            <div class="field">
+              <label for="blockType">Type</label>
+              <select id="blockType">
+                <option value="Vacation">Vacation</option>
+                <option value="Lunch">Lunch</option>
+                <option value="Break">Break</option>
+                <option value="Doctor">Doctor</option>
+                <option value="Other" selected>Other</option>
+              </select>
+            </div>
+            <div class="field"><label for="blockLabel">Label / note</label><input type="text" id="blockLabel" placeholder="e.g. Malta holiday, Gym, etc." /></div>
+            <button class="btn primary" id="blockSaveBtn" onclick="saveBlock()">Save block</button>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">
+              Blocks are for your internal calendar only – clients don’t see them.
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header"><h2>Upcoming blocks</h2></div>
+            <div id="blocksList"></div>
+          </div>
+        </div>
+
+        <!-- EXPORT -->
+        <div id="exportSection" style="display:none;">
+          <div class="panel">
+            <div class="panel-header"><h2>Export appointments</h2></div>
+            <div class="field-row">
+              <div class="field"><label for="exportFrom">From date</label><input type="date" id="exportFrom" /></div>
+              <div class="field"><label for="exportTo">To date</label><input type="date" id="exportTo" /></div>
+            </div>
+            <button class="btn" onclick="exportAppointmentsCsv()">Download CSV</button>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Opens in Excel / Google Sheets.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // 🔑 Fill with your Supabase project values
+      const SUPABASE_URL = 'https://huzmmuwnjmexvmsjkrhs.supabase.co';
+      const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh1em1tdXduam1leHZtc2prcmhzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxNzA3MzMsImV4cCI6MjA3Nzc0NjczM30.u-ahrY3z1pv3PHCm40okg6fdSvlhsWldWlVqQFNF5_g';
+
+      const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+      let currentUser = null;
+
+      let clients = [];
+      let services = [];
+      let staff = [];
+      let allAppointments = [];
+      let clientStats = {};
+      let blocks = [];
+      let editingBlockId = null;
+
+      let currentSection = 'calendar';
+      let currentFilter = { type: 'range', daysAhead: 7 };
+      let currentMainView = 'list';
+      let calendarBaseDate = new Date();
+      let currentModalAppointment = null;
+
+      /* -------- SOUND -------- */
+      let audioCtx = null;
+      function getAudioCtx(){ if(!audioCtx){ const AC=window.AudioContext||window.webkitAudioContext; if(AC) audioCtx=new AC(); } return audioCtx; }
+      function playBeep(freq=880,duration=.12){ const ctx=getAudioCtx(); if(!ctx) return; const o=ctx.createOscillator(); const g=ctx.createGain(); o.type='sine'; o.frequency.value=freq; o.connect(g); g.connect(ctx.destination); const now=ctx.currentTime; g.gain.setValueAtTime(.15,now); g.gain.exponentialRampToValueAtTime(.001,now+duration); o.start(now); o.stop(now+duration); }
+
+      /* -------- UI helpers -------- */
+      function showToast(msg){const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('visible'); setTimeout(()=>t.classList.remove('visible'),2000);}
+      function showLoading(msg){const ov=document.getElementById('loadingOverlay'); ov.querySelector('.loading-box').textContent=msg||'Loading…'; ov.style.display='flex';}
+      function hideLoading(){document.getElementById('loadingOverlay').style.display='none';}
+
+      /* -------- Auth -------- */
+      function showLogin(){document.getElementById('loginSection').style.display='flex';document.getElementById('appRoot').style.display='none';}
+      function showApp(){document.getElementById('loginSection').style.display='none';document.getElementById('appRoot').style.display='block';}
+
+      async function handleLogin(){
+        const email=document.getElementById('loginEmail').value.trim();
+        const password=document.getElementById('loginPassword').value;
+        if(!email||!password){alert('Please enter email and password.');return;}
+        showLoading('Signing in…');
+        const {data,error}=await supabaseClient.auth.signInWithPassword({email,password});
+        hideLoading();
+        if(error){alert('Login failed: '+error.message);return;}
+        currentUser=data.user; showApp(); await initApp();
+      }
+      async function handleLogout(){await supabaseClient.auth.signOut(); currentUser=null; showLogin();}
+
+      /* -------- Sections -------- */
+      function setSection(section){
+        currentSection=section;
+        document.getElementById('calendarSection').style.display = section==='calendar' ? 'block':'none';
+        document.getElementById('clientsSection').style.display  = section==='clients' ? 'block':'none';
+        document.getElementById('blocksSection').style.display   = section==='blocks' ? 'block':'none';
+        document.getElementById('exportSection').style.display   = section==='export' ? 'block':'none';
+
+        document.getElementById('navCalendar').classList.toggle('active',section==='calendar');
+        document.getElementById('navClients').classList.toggle('active',section==='clients');
+        document.getElementById('navBlocks').classList.toggle('active',section==='blocks');
+        document.getElementById('navExport').classList.toggle('active',section==='export');
+
+        if(section==='clients') renderClientList();
+        else if(section==='blocks') renderBlocksList();
+      }
+
+      /* -------- Date helpers -------- */
+      function toDateKeyFromDate(d){const y=d.getFullYear();const m=String(d.getMonth()+1).padStart(2,'0');const day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`;}
+      function toTimeInputFromDate(d){const h=String(d.getHours()).padStart(2,'0');const m=String(d.getMinutes()).padStart(2,'0');return `${h}:${m}`;}
+      function blockAppliesToDate(block,dateKey){const s=toDateKeyFromDate(block.startDate);const e=toDateKeyFromDate(block.endDate);return dateKey>=s && dateKey<=e;}
+      function formatBlockTimeRange(block){
+        const s=block.startDate.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',timeZone:'Europe/Malta'});
+        const e=block.endDate.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',timeZone:'Europe/Malta'});
+        return `${s}–${e}`;
+      }
+      function isTimeBlockedForStaff(staffId,dt){
+        const sid=staffId?Number(staffId):null;
+        return blocks.some(b=>{
+          const applies=(!b.staffId||!sid||b.staffId===sid);
+          if(!applies) return false;
+          return dt>=b.startDate && dt<=b.endDate;
+        });
+      }
+
+      /* -------- Data loading -------- */
+      async function loadClients(){
+        const {data,error}=await supabaseClient.from('clients').select('*').order('name',{ascending:true});
+        if(error){alert('Error loading clients');return;}
+        clients=data||[]; populateClientSelect();
+      }
+      async function loadServices(){
+        const {data,error}=await supabaseClient.from('services').select('*').eq('active',true).order('name',{ascending:true});
+        if(error){alert('Error loading services');return;}
+        services=data||[]; populateServiceSelect();
+      }
+      async function loadStaff(){
+        const {data,error}=await supabaseClient.from('staff').select('*').eq('active',true).order('name',{ascending:true});
+        if(error){return;}
+        staff=data||[]; populateStaffSelects();
+      }
+      async function loadBlocks(){
+        const {data,error}=await supabaseClient
+          .from('blocks')
+          .select(`id,staff_id,start_datetime,end_datetime,block_type,label,staff ( name )`)
+          .order('start_datetime',{ascending:true});
+        if(error){return;}
+        const now=new Date(); now.setHours(0,0,0,0);
+        blocks=(data||[]).map(r=>{
+          const s=new Date(r.start_datetime); const e=new Date(r.end_datetime);
+          return {id:r.id,staffId:r.staff_id,staffName:r.staff?.name||'All staff',startDate:s,endDate:e,type:r.block_type,label:r.label||''};
+        }).filter(b=>b.endDate>=now);
+        renderBlocksList(); renderCalendarIfNeeded();
+      }
+      async function refreshAllAppointments(){
+        const {data,error}=await supabaseClient
+          .from('appointments')
+          .select(`id,client_id,service_id,staff_id,start_datetime,status,reminder_sent,
+                   clients ( name, phone, email ), services ( name, price_eur ), staff ( name )`)
+          .neq('status','Cancelled')
+          .order('start_datetime',{ascending:true});
+        if(error){alert('Error loading appointments');return;}
+        allAppointments=(data||[]).map(r=>{
+          const dt=new Date(r.start_datetime);
+          const timeText=dt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',timeZone:'Europe/Malta'});
+          const dateKey=dt.toLocaleDateString('en-CA',{timeZone:'Europe/Malta'});
+          return {
+            id:r.id, clientId:r.client_id, serviceId:r.service_id, staffId:r.staff_id,
+            staffName:r.staff?.name||'', dateKey, time:timeText, status:r.status, reminderSent:r.reminder_sent,
+            clientName:r.clients?.name||'(Unknown)', clientPhone:r.clients?.phone||'', clientEmail:r.clients?.email||'',
+            serviceName:r.services?.name||'(Unknown service)', price:r.services?.price_eur||null, startDate:dt
+          };
+        });
+      }
+
+      /* -------- Selects -------- */
+      function populateClientSelect(list){
+        const sel=document.getElementById('clientSelect');
+        const data=list||clients; sel.innerHTML='';
+        if(!data||!data.length){const opt=document.createElement('option'); opt.value=''; opt.textContent='No clients found'; sel.appendChild(opt); return;}
+        data.forEach(c=>{
+          const opt=document.createElement('option'); opt.value=String(c.id);
+          const extra=c.phone?` (${c.phone})`: (c.email?` (${c.email})`:'');
+          opt.textContent=c.name+extra; sel.appendChild(opt);
+        });
+      }
+      function populateServiceSelect(){
+        const sel=document.getElementById('serviceSelect'); sel.innerHTML='';
+        if(!services.length){const o=document.createElement('option'); o.value=''; o.textContent='No services yet'; sel.appendChild(o); return;}
+        services.forEach(s=>{const o=document.createElement('option'); o.value=String(s.id); const p=s.price_eur?` (€${s.price_eur})`:''; o.textContent=s.name+p; sel.appendChild(o);});
+      }
+      function populateStaffSelects(){
+        const blockSel=document.getElementById('blockStaff');
+        if(blockSel){ blockSel.innerHTML=''; const all=document.createElement('option'); all.value=''; all.textContent='All staff'; blockSel.appendChild(all);
+          staff.forEach(s=>{const o=document.createElement('option'); o.value=String(s.id); o.textContent=s.name; blockSel.appendChild(o);});}
+        const apptSel=document.getElementById('staffSelect'); if(apptSel){ apptSel.innerHTML='';
+          if(!staff.length){const o=document.createElement('option'); o.value=''; o.textContent='No staff'; apptSel.appendChild(o);}
+          else{staff.forEach((s,idx)=>{const o=document.createElement('option'); o.value=String(s.id); o.textContent=s.name; apptSel.appendChild(o); if(idx===0) apptSel.value=String(s.id);});}
+        }
+      }
+      function filterClientsForBooking(){
+        const input=document.getElementById('clientSearchBooking'); if(!input) return;
+        const q=input.value.trim().toLowerCase(); if(!q){populateClientSelect();return;}
+        const filtered=clients.filter(c=>{
+          const n=(c.name||'').toLowerCase(); const p=(c.phone||'').toLowerCase(); const e=(c.email||'').toLowerCase();
+          return n.includes(q)||p.includes(q)||e.includes(q);
+        });
+        populateClientSelect(filtered);
+      }
+
+      /* -------- Client create (now requires email + phone) -------- */
+      function isValidEmail(s){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);}
+      function hasPhone(s){return s && s.trim().length>=6;}
+
+      function toggleNewClientPanel(show){document.getElementById('newClientPanel').style.display=show?'block':'none';}
+
+      async function saveNewClient(){
+        const name=document.getElementById('newClientName').value.trim();
+        const phone=document.getElementById('newClientPhone').value.trim();
+        const email=document.getElementById('newClientEmail').value.trim();
+        const notes=document.getElementById('newClientNotes').value.trim();
+
+        if(!name){alert('Name is required.');return;}
+        if(!hasPhone(phone)){alert('Phone is required.');return;}
+        if(!isValidEmail(email)){alert('Valid email is required.');return;}
+
+        showLoading('Saving client…');
+        const {data,error}=await supabaseClient.from('clients')
+          .insert([{name,phone,email,notes:notes||null}]).select().single();
+        hideLoading();
+        if(error){alert('Error creating client');return;}
+
+        clients.push(data); populateClientSelect(); document.getElementById('clientSelect').value=String(data.id);
+        ['newClientName','newClientPhone','newClientEmail','newClientNotes'].forEach(id=>document.getElementById(id).value='');
+        toggleNewClientPanel(false); playBeep(900,.12); showToast('Client saved');
+      }
+
+      /* -------- Ensure client contact before booking -------- */
+      async function ensureClientHasContact(clientId){
+        const c=clients.find(x=>String(x.id)===String(clientId));
+        if(!c) return false;
+
+        // Email required
+        if(!c.email){
+          let email=prompt('This client has no email. Enter email to continue:');
+          if(!email) return false;
+          email=email.trim();
+          if(!isValidEmail(email)){alert('Please enter a valid email.');return false;}
+          showLoading('Saving email…');
+          const {error}=await supabaseClient.from('clients').update({email}).eq('id',c.id);
+          hideLoading();
+          if(error){alert('Failed to save email');return false;}
+          c.email=email; // update local
+          populateClientSelect(); // refresh labels in dropdown
+        }
+
+        // Phone required (kept, because you’ll want it later for SMS)
+        if(!c.phone){
+          let phone=prompt('This client has no phone. Enter phone (e.g. +49123456789):');
+          if(!phone) return false;
+          phone=phone.trim();
+          if(!hasPhone(phone)){alert('Please enter a valid phone.');return false;}
+          showLoading('Saving phone…');
+          const {error}=await supabaseClient.from('clients').update({phone}).eq('id',c.id);
+          hideLoading();
+          if(error){alert('Failed to save phone');return false;}
+          c.phone=phone;
+          populateClientSelect();
+        }
+
+        return true;
+      }
+
+      /* -------- Appointment create -------- */
+      async function saveAppointment(){
+        const clientId=document.getElementById('clientSelect').value;
+        const staffId=document.getElementById('staffSelect').value;
+        const serviceId=document.getElementById('serviceSelect').value;
+        const date=document.getElementById('appointmentDate').value;
+        const time=document.getElementById('appointmentTime').value;
+
+        if(!clientId){alert('Please select a client.');return;}
+        if(!staffId){alert('Please select an employee.');return;}
+        if(!serviceId){alert('Please select a service.');return;}
+        if(!date||!time){alert('Please choose date and time.');return;}
+
+        // Make sure the selected client has email + phone
+        const ok=await ensureClientHasContact(clientId);
+        if(!ok){return;}
+
+        const localDateTime=new Date(`${date}T${time}:00`);
+        if(isTimeBlockedForStaff(staffId,localDateTime)){
+          alert('This time is blocked for this staff member (break / vacation). Please choose another time.');
+          return;
+        }
+
+        const startIso=localDateTime.toISOString();
+
+        showLoading('Saving appointment…');
+        const {error}=await supabaseClient.from('appointments').insert([{
+          client_id:Number(clientId),
+          service_id:Number(serviceId),
+          staff_id:Number(staffId),
+          start_datetime:startIso,
+        }]);
+        hideLoading();
+        if(error){alert('Error creating appointment');return;}
+
+        document.getElementById('appointmentDate').value='';
+        document.getElementById('appointmentTime').value='';
+
+        await refreshAllAppointments(); buildClientStats(); applyCurrentFilter(); renderCalendarIfNeeded();
+        playBeep(850,.12); showToast('Appointment saved');
+      }
+
+      /* -------- Client stats / list (unchanged) -------- */
+      function buildClientStats(){
+        clientStats={};
+        allAppointments.forEach(a=>{
+          if(!a.clientId) return;
+          if(!clientStats[a.clientId]) clientStats[a.clientId]={count:0,total:0,lastDate:null};
+          const cs=clientStats[a.clientId];
+          cs.count+=1;
+          if(a.price!=null) cs.total+=(Number(a.price)||0);
+          if(!cs.lastDate||a.startDate>cs.lastDate) cs.lastDate=a.startDate;
+        });
+      }
+      function renderClientList(){
+        const listDiv=document.getElementById('clientList'); if(!listDiv) return;
+        const search=(document.getElementById('clientSearchList')?.value||'').trim().toLowerCase();
+        let data=clients.slice();
+        if(search){
+          data=data.filter(c=>{
+            const n=(c.name||'').toLowerCase(); const p=(c.phone||'').toLowerCase(); const e=(c.email||'').toLowerCase();
+            return n.includes(search)||p.includes(search)||e.includes(search);
+          });
+        }
+        if(!data.length){listDiv.innerHTML='<div style="font-size:12px; color:var(--text-muted);">No clients found.</div>'; document.getElementById('clientDetail').innerHTML='<div style="font-size:13px; color:var(--text-muted);">Select a client to see stats.</div>'; return;}
+        listDiv.innerHTML='';
+        data.forEach(c=>{
+          const stats=clientStats[c.id]||{count:0,lastDate:null};
+          const item=document.createElement('div'); item.className='client-list-item'; item.onclick=()=>selectClient(c.id);
+          const name=document.createElement('div'); name.className='client-list-name'; name.textContent=c.name;
+          const meta=document.createElement('div'); meta.className='client-list-meta';
+          const last=stats.lastDate&&stats.lastDate.toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'});
+          meta.textContent=(stats.count||0)+' appointments'+(last?` • last: ${last}`:'');
+          item.appendChild(name); item.appendChild(meta); listDiv.appendChild(item);
+        });
+      }
+      function selectClient(clientId){
+        const detail=document.getElementById('clientDetail');
+        const client=clients.find(c=>c.id===clientId);
+        const stats=clientStats[clientId]||{count:0,total:0,lastDate:null};
+        const upcoming=allAppointments.filter(a=>a.clientId===clientId).sort((a,b)=>a.startDate-b.startDate);
+        const last=stats.lastDate&&stats.lastDate.toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+        let html=`
+          <div style="margin-bottom:10px;">
+            <div style="font-size:16px; font-weight:600;">${client.name}</div>
+            <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">
+              ${client.phone||''}${client.email?' • '+client.email:''}
+            </div>
+          </div>
+          <div class="stat-row">
+            <div class="stat-card"><div class="stat-label">Total appointments</div><div class="stat-value">${stats.count||0}</div></div>
+            <div class="stat-card"><div class="stat-label">Total revenue</div><div class="stat-value">€${(stats.total||0).toFixed(2)}</div></div>
+            <div class="stat-card"><div class="stat-label">Last visit</div><div class="stat-value">${last||'–'}</div></div>
+          </div>
+          <div style="margin-top:8px; font-size:13px; font-weight:500;">Recent appointments</div>
+        `;
+        if(!upcoming.length){ html+=`<div style="font-size:12px; color:var(--text-muted); margin-top:4px;">No appointments found for this client.</div>`; }
+        else{
+          html+=`<div style="margin-top:4px;">`;
+          upcoming.slice(-10).reverse().forEach(a=>{
+            const when=a.startDate.toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+            const price=a.price?` (€${a.price})`:'';
+            html+=`<div style="font-size:12px; padding:3px 0; border-bottom:1px solid #e5e7eb;">
+              <div>${when}</div>
+              <div style="color:var(--text-muted);">${a.serviceName}${price}</div>
+              <div style="color:var(--text-muted); font-size:11px;">Status: ${a.status||'Scheduled'}</div>
+            </div>`;
+          });
+          html+=`</div>`;
+        }
+        detail.innerHTML=html;
+      }
+
+      /* -------- List rendering + filters -------- */
+      function formatDateLabel(dateKey){const d=new Date(dateKey+'T00:00:00'); return d.toLocaleDateString(undefined,{weekday:'short',year:'numeric',month:'short',day:'numeric'});}
+      function groupByDate(appts){const g={}; appts.forEach(a=>{const d=a.dateKey; if(!g[d]) g[d]=[]; g[d].push(a);}); return g;}
+      function renderAppointments(appts){
+        const container=document.getElementById('appointments'); const status=document.getElementById('status');
+        if(!appts||!appts.length){container.innerHTML=''; status.textContent='No appointments in this period.'; return;}
+        status.textContent=''; const groups=groupByDate(appts); const sorted=Object.keys(groups).sort(); container.innerHTML='';
+        sorted.forEach(dateKey=>{
+          const groupDiv=document.createElement('div'); groupDiv.className='date-group';
+          const title=document.createElement('div'); title.className='date-title'; title.textContent=formatDateLabel(dateKey); groupDiv.appendChild(title);
+
+          groups[dateKey].forEach(a=>{
+            const row=document.createElement('div'); row.className='appointment'; row.onclick=function(){openAppointmentDetails(a);};
+            const left=document.createElement('div'); left.className='left';
+            const timeEl=document.createElement('div'); timeEl.className='time'; timeEl.textContent=a.time||'';
+            const clientEl=document.createElement('div'); clientEl.className='client'; clientEl.textContent=a.clientName||'(No name)';
+            const serviceEl=document.createElement('div'); serviceEl.className='service'; const price=a.price?` (€${a.price})`:''; serviceEl.textContent=(a.serviceName||'')+price;
+            const statusEl=document.createElement('div'); statusEl.className='status'; statusEl.textContent='Status: '+(a.status||'Scheduled');
+            left.appendChild(timeEl); left.appendChild(clientEl); left.appendChild(serviceEl); left.appendChild(statusEl);
+
+            const right=document.createElement('div'); right.className='right';
+            const moveBtn=document.createElement('button'); moveBtn.className='btn-sm move'; moveBtn.textContent='Move'; moveBtn.onclick=function(ev){ev.stopPropagation(); moveAppointment(a.id);};
+            const cancelBtn=document.createElement('button'); cancelBtn.className='btn-sm cancel'; cancelBtn.textContent='Cancel'; cancelBtn.onclick=function(ev){ev.stopPropagation(); cancelAppointment(a.id);};
+            right.appendChild(moveBtn); right.appendChild(cancelBtn);
+
+            row.appendChild(left); row.appendChild(right); groupDiv.appendChild(row);
+          });
+
+          // Blocks in list
+          const dayBlocks=blocks.filter(b=>blockAppliesToDate(b,dateKey)).sort((a,b)=>a.startDate-b.startDate);
+          dayBlocks.forEach(b=>{
+            const row=document.createElement('div'); row.className='appointment block-appointment';
+            const left=document.createElement('div'); left.className='left';
+            const timeEl=document.createElement('div'); timeEl.className='time'; timeEl.textContent=formatBlockTimeRange(b);
+            const labelEl=document.createElement('div'); labelEl.className='block-label-text'; labelEl.textContent=`Blocked: ${b.label||b.type||'Block'}`;
+            const metaEl=document.createElement('div'); metaEl.className='block-meta-text'; metaEl.textContent=b.staffName?`Staff: ${b.staffName}`:'All staff';
+            left.appendChild(timeEl); left.appendChild(labelEl); left.appendChild(metaEl); row.appendChild(left); groupDiv.appendChild(row);
+          });
+
+          container.appendChild(groupDiv);
+        });
+      }
+
+      function setActiveFilter(btn){document.querySelectorAll('.filters button').forEach(b=>b.classList.remove('active')); if(btn) btn.classList.add('active');}
+      function applyCurrentFilter(){
+        if(!allAppointments.length){renderAppointments([]);return;}
+        let filtered=[];
+        if(currentFilter.type==='range'){
+          if(currentFilter.daysAhead===''||currentFilter.daysAhead==null){const today=new Date(); today.setHours(0,0,0,0); const tKey=toDateKeyFromDate(today); filtered=allAppointments.filter(a=>a.dateKey>=tKey);}
+          else{const days=Number(currentFilter.daysAhead); const today=new Date(); today.setHours(0,0,0,0); const end=new Date(today); end.setDate(end.getDate()+days); const tKey=toDateKeyFromDate(today); const eKey=toDateKeyFromDate(end); filtered=allAppointments.filter(a=>a.dateKey>=tKey && a.dateKey<=eKey);}
+        }else if(currentFilter.type==='date'){filtered=allAppointments.filter(a=>a.dateKey===currentFilter.dateKey);}
+        renderAppointments(filtered);
+      }
+      function setRangeFilter(daysAhead,btn){setActiveFilter(btn); currentFilter={type:'range',daysAhead}; applyCurrentFilter();}
+      function loadTomorrow(btn){setActiveFilter(btn); const t=new Date(); t.setDate(t.getDate()+1); const key=toDateKeyFromDate(t); currentFilter={type:'date',dateKey:key}; applyCurrentFilter();}
+      function jumpToPickedDate(){const input=document.getElementById('jumpDate'); if(!input.value) return; document.querySelectorAll('.filters button').forEach(b=>b.classList.remove('active')); currentFilter={type:'date',dateKey:input.value}; applyCurrentFilter();}
+
+      /* -------- Export CSV -------- */
+      function exportAppointmentsCsv(){
+        if(!allAppointments.length){alert('No appointments to export.'); return;}
+        const from=document.getElementById('exportFrom').value; const to=document.getElementById('exportTo').value;
+        if(!from||!to){alert('Please select both From and To dates.'); return;}
+        if(from>to){alert('From date cannot be after To date.'); return;}
+        const rows=allAppointments.filter(a=>a.dateKey>=from && a.dateKey<=to);
+        if(!rows.length){alert('No appointments in this date range.'); return;}
+        const header=['Date','Time','Client','Phone','Email','Service','PriceEUR','Status','ReminderSent']; const lines=[header.join(',')];
+        rows.forEach(a=>{
+          const vals=[a.dateKey,a.time,a.clientName,a.clientPhone,a.clientEmail,a.serviceName,a.price!=null?a.price:'',a.status,a.reminderSent?'TRUE':'FALSE'];
+          const line=vals.map(v=>{const s=String(v??''); return '"'+s.replace(/"/g,'""')+'"';}).join(','); lines.push(line);
+        });
+        const csv=lines.join('\r\n'); const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}); const url=URL.createObjectURL(blob);
+        const link=document.createElement('a'); link.href=url; link.download=`appointments_${from.replace(/-/g,'')}_${to.replace(/-/g,'')}.csv`; document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(url);
+        playBeep(760,.1); showToast('CSV downloaded');
+      }
+
+      /* -------- Cancel / Move -------- */
+      async function cancelAppointment(appointmentId){
+        if(!confirm('Cancel this appointment?')) return;
+        showLoading('Cancelling appointment…');
+        const {error}=await supabaseClient.from('appointments').update({status:'Cancelled',updated_at:new Date().toISOString()}).eq('id',appointmentId);
+        hideLoading();
+        if(error){alert('Error cancelling appointment');return;}
+        await refreshAllAppointments(); buildClientStats(); applyCurrentFilter(); renderCalendarIfNeeded();
+        playBeep(600,.1); showToast('Appointment cancelled');
+      }
+
+      async function moveAppointment(appointmentId){
+        const newDate=prompt('New date (YYYY-MM-DD):'); if(!newDate) return;
+        const newTime=prompt('New time (HH:MM, 24h):'); if(!newTime) return;
+        const newLocal=new Date(`${newDate}T${newTime}:00`);
+        const appt=allAppointments.find(a=>a.id===appointmentId); const staffId=appt?appt.staffId:null;
+        if(isTimeBlockedForStaff(staffId,newLocal)){alert('This time is blocked for this staff member. Please choose another time.'); return;}
+        const newIso=newLocal.toISOString();
+        showLoading('Moving appointment…');
+        const {error}=await supabaseClient.from('appointments').update({start_datetime:newIso,status:'Scheduled',updated_at:new Date().toISOString()}).eq('id',appointmentId);
+        hideLoading();
+        if(error){alert('Error moving appointment');return;}
+        await refreshAllAppointments(); buildClientStats(); applyCurrentFilter(); renderCalendarIfNeeded();
+        playBeep(820,.1); showToast('Appointment moved');
+      }
+
+      /* -------- Modal -------- */
+      function openAppointmentDetails(appt){
+        currentModalAppointment=appt;
+        const body=document.getElementById('modalBody');
+        body.innerHTML=`
+          <div class="modal-row"><span class="modal-label">Client:</span> ${appt.clientName}</div>
+          <div class="modal-row"><span class="modal-label">Service:</span> ${appt.serviceName}${appt.price?' (€'+appt.price+')':''}</div>
+          <div class="modal-row"><span class="modal-label">Date:</span> ${appt.dateKey}</div>
+          <div class="modal-row"><span class="modal-label">Time:</span> ${appt.time}</div>
+          <div class="modal-row"><span class="modal-label">Employee:</span> ${appt.staffName||'-'}</div>
+          <div class="modal-row"><span class="modal-label">Status:</span> ${appt.status||'Scheduled'}</div>
+          <div class="modal-row"><span class="modal-label">Phone:</span> ${appt.clientPhone||'-'}</div>
+          <div class="modal-row"><span class="modal-label">Email:</span> ${appt.clientEmail||'-'}</div>`;
+        document.getElementById('appointmentModal').style.display='flex';
+      }
+      function closeAppointmentModal(){document.getElementById('appointmentModal').style.display='none'; currentModalAppointment=null;}
+      function moveFromModal(){if(!currentModalAppointment) return; moveAppointment(currentModalAppointment.id); closeAppointmentModal();}
+      function cancelFromModal(){if(!currentModalAppointment) return; cancelAppointment(currentModalAppointment.id); closeAppointmentModal();}
+
+      /* -------- Calendar views -------- */
+      function setMainView(view){
+        currentMainView=view;
+        document.getElementById('viewListBtn').classList.remove('active');
+        document.getElementById('viewWeekBtn').classList.remove('active');
+        document.getElementById('viewMonthBtn').classList.remove('active');
+        if(view==='list') document.getElementById('viewListBtn').classList.add('active');
+        if(view==='week') document.getElementById('viewWeekBtn').classList.add('active');
+        if(view==='month') document.getElementById('viewMonthBtn').classList.add('active');
+
+        document.getElementById('listFilters').style.display = view==='list' ? 'flex':'none';
+        document.getElementById('status').style.display       = view==='list' ? 'block':'none';
+
+        if(view==='list'){ applyCurrentFilter(); document.getElementById('calendarContainer').innerHTML=''; }
+        else{ renderCalendarIfNeeded(); }
+      }
+      function renderCalendarIfNeeded(){ if(currentMainView==='week') renderWeekCalendar(); else if(currentMainView==='month') renderMonthCalendar(); }
+
+      function getWeekStart(date){const d=new Date(date); const day=d.getDay(); const diff=day===0?-6:1-day; d.setDate(d.getDate()+diff); d.setHours(0,0,0,0); return d;}
+      function renderWeekCalendar(){
+        const container=document.getElementById('calendarContainer'); container.innerHTML='';
+        const base=new Date(calendarBaseDate); const weekStart=getWeekStart(base);
+
+        const header=document.createElement('div'); header.className='calendar-header';
+        const title=document.createElement('div'); title.className='calendar-header-title';
+        const end=new Date(weekStart); end.setDate(end.getDate()+6);
+        title.textContent='Week view: '+weekStart.toLocaleDateString(undefined,{month:'short',day:'numeric'})+' – '+end.toLocaleDateString(undefined,{month:'short',day:'numeric'});
+        const nav=document.createElement('div'); nav.className='calendar-nav';
+        const prevBtn=document.createElement('button'); prevBtn.textContent='<'; prevBtn.onclick=function(){calendarBaseDate.setDate(calendarBaseDate.getDate()-7); renderWeekCalendar();};
+        const nextBtn=document.createElement('button'); nextBtn.textContent='>'; nextBtn.onclick=function(){calendarBaseDate.setDate(calendarBaseDate.getDate()+7); renderWeekCalendar();};
+        nav.appendChild(prevBtn); nav.appendChild(nextBtn); header.appendChild(title); header.appendChild(nav); container.appendChild(header);
+
+        const grid=document.createElement('div'); grid.className='week-grid';
+        const groups=groupByDate(allAppointments);
+        for(let i=0;i<7;i++){
+          const dayDate=new Date(weekStart); dayDate.setDate(weekStart.getDate()+i); const key=toDateKeyFromDate(dayDate);
+          const dayAppts=(groups[key]||[]).slice().sort((a,b)=>a.startDate-b.startDate);
+
+          const cell=document.createElement('div'); cell.className='week-day';
+          const today=new Date(); today.setHours(0,0,0,0); if(dayDate.getTime()===today.getTime()) cell.classList.add('today');
+
+          const headerRow=document.createElement('div'); headerRow.className='week-day-header';
+          const label=document.createElement('div'); label.className='week-day-label'; label.textContent=dayDate.toLocaleDateString(undefined,{weekday:'short'});
+          const num=document.createElement('div'); num.className='week-day-number'; num.textContent=dayDate.getDate();
+          headerRow.appendChild(label); headerRow.appendChild(num); cell.appendChild(headerRow);
+
+          const list=document.createElement('div'); list.className='week-day-appointments';
+
+          dayAppts.forEach(a=>{const pill=document.createElement('div'); pill.className='week-appt-pill'; pill.textContent=`${a.time} – ${a.clientName}`; pill.onclick=function(){openAppointmentDetails(a);}; list.appendChild(pill);});
+
+          const dayBlocks=blocks.filter(b=>blockAppliesToDate(b,key)).sort((a,b)=>a.startDate-b.startDate);
+          dayBlocks.forEach(b=>{const pill=document.createElement('div'); pill.className='week-appt-pill week-block-pill'; pill.textContent=`Blocked: ${b.label||b.type||''} (${b.staffName})`; list.appendChild(pill);});
+
+          if(!dayAppts.length && !dayBlocks.length){const empty=document.createElement('div'); empty.style.fontSize='11px'; empty.style.color='#9ca3af'; empty.textContent='No entries'; list.appendChild(empty);}
+
+          cell.appendChild(list); grid.appendChild(cell);
+        }
+        container.appendChild(grid);
+      }
+
+      function renderMonthCalendar(){
+        const container=document.getElementById('calendarContainer'); container.innerHTML='';
+        const base=new Date(calendarBaseDate); const year=base.getFullYear(); const month=base.getMonth();
+
+        const header=document.createElement('div'); header.className='calendar-header';
+        const title=document.createElement('div'); title.className='calendar-header-title';
+        title.textContent=base.toLocaleDateString(undefined,{month:'long',year:'numeric'});
+        const nav=document.createElement('div'); nav.className='calendar-nav';
+        const prevBtn=document.createElement('button'); prevBtn.textContent='<'; prevBtn.onclick=function(){calendarBaseDate.setMonth(calendarBaseDate.getMonth()-1); renderMonthCalendar();};
+        const nextBtn=document.createElement('button'); nextBtn.textContent='>'; nextBtn.onclick=function(){calendarBaseDate.setMonth(calendarBaseDate.getMonth()+1); renderMonthCalendar();};
+        nav.appendChild(prevBtn); nav.appendChild(nextBtn); header.appendChild(title); header.appendChild(nav); container.appendChild(header);
+
+        const weekdaysRow=document.createElement('div'); weekdaysRow.className='month-grid';
+        ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(w=>{const cell=document.createElement('div'); cell.className='month-weekday-header'; cell.textContent=w; weekdaysRow.appendChild(cell);});
+        container.appendChild(weekdaysRow);
+
+        const grid=document.createElement('div'); grid.className='month-grid';
+        const firstOfMonth=new Date(year,month,1); let startIndex=firstOfMonth.getDay(); if(startIndex===0) startIndex=7; startIndex=startIndex-1;
+        const daysInMonth=new Date(year,month+1,0).getDate(); const totalCells=Math.ceil((startIndex+daysInMonth)/7)*7;
+        const groups=groupByDate(allAppointments); const today=new Date(); today.setHours(0,0,0,0);
+
+        for(let cellIndex=0; cellIndex<totalCells; cellIndex++){
+          const dayNum=cellIndex-startIndex+1; const inMonth=dayNum>=1 && dayNum<=daysInMonth;
+          const cellDate=new Date(year,month,inMonth?dayNum:1); const key=toDateKeyFromDate(cellDate);
+          const dayAppts=inMonth ? (groups[key]||[]).slice().sort((a,b)=>a.startDate-b.startDate) : [];
+          const dayBlocks=inMonth ? blocks.filter(b=>blockAppliesToDate(b,key)).sort((a,b)=>a.startDate-b.startDate) : [];
+
+          const cell=document.createElement('div'); cell.className='month-day'; if(!inMonth) cell.classList.add('outside');
+          const headerRow=document.createElement('div'); headerRow.className='month-day-header';
+          const num=document.createElement('div'); num.className='month-day-number'; num.textContent=inMonth?dayNum:'';
+          headerRow.appendChild(num); cell.appendChild(headerRow);
+          if(inMonth && cellDate.toDateString()===today.toDateString()) cell.classList.add('today');
+
+          const dots=document.createElement('div'); dots.className='month-day-dots';
+          dayAppts.slice(0,3).forEach(a=>{const dot=document.createElement('div'); dot.className='month-dot'; dot.textContent=`${a.time} ${a.clientName}`; dot.onclick=function(){openAppointmentDetails(a);}; dots.appendChild(dot);});
+          dayBlocks.slice(0,2).forEach(b=>{const dot=document.createElement('div'); dot.className='month-dot month-dot-block'; dot.textContent=`Block: ${b.label||b.type}`; dots.appendChild(dot);});
+          if(dayAppts.length>3 || dayBlocks.length>2){const moreCount=Math.max(0,dayAppts.length-3)+Math.max(0,dayBlocks.length-2); if(moreCount>0){const more=document.createElement('div'); more.className='month-dot month-dot-more'; more.textContent=`+${moreCount} more`; dots.appendChild(more);}}
+
+          cell.appendChild(dots); grid.appendChild(cell);
+        }
+        container.appendChild(grid);
+      }
+
+      /* -------- Blocks UI (edit/delete) -------- */
+      function renderBlocksList(){
+        const list=document.getElementById('blocksList'); if(!list) return;
+        if(!blocks.length){list.innerHTML='<div style="font-size:12px; color:var(--text-muted);">No upcoming blocks.</div>'; return;}
+        let html=''; blocks.slice().sort((a,b)=>a.startDate-b.startDate).forEach(b=>{
+          const from=b.startDate.toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+          const to=b.endDate.toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+          html+=`
+            <div class="block-item">
+              <div><strong>${b.staffName}</strong></div>
+              <div>${from} → ${to}</div>
+              <div class="block-type">${b.type}${b.label?' • '+b.label:''}</div>
+              <div style="margin-top:4px; display:flex; gap:6px;">
+                <button class="btn-sm block-edit" onclick="editBlock(${b.id})">Edit</button>
+                <button class="btn-sm cancel" onclick="deleteBlock(${b.id})">Delete</button>
+              </div>
+            </div>`;
+        });
+        list.innerHTML=html;
+      }
+      async function saveBlock(){
+        const staffIdStr=document.getElementById('blockStaff').value;
+        const fromDate=document.getElementById('blockFromDate').value;
+        const fromTime=document.getElementById('blockFromTime').value;
+        const toDate=document.getElementById('blockToDate').value;
+        const toTime=document.getElementById('blockToTime').value;
+        const type=document.getElementById('blockType').value||'Other';
+        const label=document.getElementById('blockLabel').value.trim();
+
+        if(!fromDate||!fromTime||!toDate||!toTime){alert('Please fill in from/to date and time.');return;}
+        const start=new Date(`${fromDate}T${fromTime}:00`); const end=new Date(`${toDate}T${toTime}:00`);
+        if(end<=start){alert('End must be after start.');return;}
+
+        const payload={start_datetime:start.toISOString(), end_datetime:end.toISOString(), block_type:type, label:label||null};
+        if(staffIdStr) payload.staff_id=Number(staffIdStr); else payload.staff_id=null;
+
+        showLoading(editingBlockId?'Updating block…':'Saving block…');
+        let error;
+        if(editingBlockId){({error}=await supabaseClient.from('blocks').update(payload).eq('id',editingBlockId));}
+        else{({error}=await supabaseClient.from('blocks').insert([payload]));}
+        hideLoading();
+        if(error){alert('Error saving block');return;}
+
+        ['blockFromDate','blockFromTime','blockToDate','blockToTime','blockLabel'].forEach(id=>document.getElementById(id).value='');
+        document.getElementById('blockType').value='Other'; document.getElementById('blockStaff').value='';
+        editingBlockId=null; document.getElementById('blockSaveBtn').textContent='Save block';
+
+        await loadBlocks(); playBeep(750,.12); showToast('Block saved');
+      }
+      function editBlock(id){
+        const b=blocks.find(x=>x.id===id); if(!b) return;
+        editingBlockId=id;
+        document.getElementById('blockStaff').value=b.staffId?String(b.staffId):'';
+        document.getElementById('blockFromDate').value=toDateKeyFromDate(b.startDate);
+        document.getElementById('blockFromTime').value=toTimeInputFromDate(b.startDate);
+        document.getElementById('blockToDate').value=toDateKeyFromDate(b.endDate);
+        document.getElementById('blockToTime').value=toTimeInputFromDate(b.endDate);
+        document.getElementById('blockType').value=b.type||'Other';
+        document.getElementById('blockLabel').value=b.label||'';
+        document.getElementById('blockSaveBtn').textContent='Update block';
+        showToast('Block loaded for editing');
+      }
+      async function deleteBlock(id){
+        if(!confirm('Delete this block?')) return;
+        showLoading('Deleting block…'); const {error}=await supabaseClient.from('blocks').delete().eq('id',id); hideLoading();
+        if(error){alert('Error deleting block');return;}
+        if(editingBlockId===id){editingBlockId=null; document.getElementById('blockSaveBtn').textContent='Save block';}
+        await loadBlocks(); applyCurrentFilter(); renderCalendarIfNeeded(); playBeep(650,.1); showToast('Block deleted');
+      }
+
+      /* -------- Init -------- */
+      async function initApp(){
+        showLoading('Loading…');
+        try{
+          await Promise.all([loadClients(),loadServices(),loadStaff(),refreshAllAppointments(),loadBlocks()]);
+          buildClientStats();
+          const btn=document.querySelector('#listFilters button:nth-child(3)');
+          if(btn){ setActiveFilter(btn); currentFilter={type:'range',daysAhead:7}; applyCurrentFilter(); }
+        }catch(e){ alert('There was an error loading data.'); }
+        finally{ hideLoading(); }
+      }
+
+      window.onload=async function(){
+        showLoading('Loading…');
+        try{
+          const {data,error}=await supabaseClient.auth.getUser();
+          if(!error&&data.user){ currentUser=data.user; showApp(); await initApp(); }
+          else{ showLogin(); }
+        }catch(e){ showLogin(); }
+        finally{ hideLoading(); }
+      };
+    </script>
+  </body>
+</html>
