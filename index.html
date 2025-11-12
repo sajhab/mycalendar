@@ -549,26 +549,41 @@
         return true;
       }
 
-      /* -------- Availability check -------- */
-      async function checkStaffAvailability(staffId, serviceId, localStart) {
-        const service = services.find(s => String(s.id) === String(serviceId));
-        if (!service || !service.duration_minutes) return { ok: true };
-        const durationMinutes = Number(service.duration_minutes);
-        const localEnd = new Date(localStart.getTime() + durationMinutes * 60000);
-        if (isTimeBlockedForStaff(staffId, localStart) || isTimeBlockedForStaff(staffId, localEnd)) {
-          return { ok:false, reason:'blocked' };
-        }
-        const startIso=localStart.toISOString(); const endIso=localEnd.toISOString();
-        const { data, error } = await supabaseClient
-          .from('appointments')
-          .select('id')
-          .eq('staff_id', Number(staffId))
-          .neq('status','Cancelled')
-          .lt('start_datetime', endIso)
-          .gt('end_datetime', startIso);
-        if (error) return { ok:false, reason:'error' };
-        return { ok: !(data && data.length), reason: (data && data.length) ? 'busy' : null };
-      }
+// Check if a staff member is free for the entire service duration.
+// Optional 4th arg excludeId lets us ignore the appointment being moved.
+async function checkStaffAvailability(staffId, serviceId, localStart, excludeId = null) {
+  const service = services.find(s => String(s.id) === String(serviceId));
+  if (!service || !service.duration_minutes) return { ok: true };
+
+  const durationMinutes = Number(service.duration_minutes);
+  const localEnd = new Date(localStart.getTime() + durationMinutes * 60000);
+
+  // Blocked times?
+  if (isTimeBlockedForStaff(staffId, localStart) || isTimeBlockedForStaff(staffId, localEnd)) {
+    return { ok:false, reason:'blocked' };
+  }
+
+  const startIso = localStart.toISOString();
+  const endIso   = localEnd.toISOString();
+
+  let q = supabaseClient
+    .from('appointments')
+    .select('id')
+    .eq('staff_id', Number(staffId))
+    .neq('status', 'Cancelled')
+    // overlap: existing.start < newEnd AND existing.end > newStart
+    .lt('start_datetime', endIso)
+    .gt('end_datetime', startIso);
+
+  if (excludeId != null) q = q.neq('id', excludeId);
+
+  const { data, error } = await q;
+  if (error) return { ok:false, reason:'error' };
+
+  const hasConflict = data && data.length > 0;
+  return { ok: !hasConflict, reason: hasConflict ? 'busy' : null };
+}
+
 
       /* -------- Appointment create -------- */
       async function saveAppointment(){
@@ -807,20 +822,48 @@
         await refreshAllAppointments(); buildClientStats(); applyCurrentFilter(); renderCalendarIfNeeded();
         playBeep(600,.1); showToast('Appointment cancelled');
       }
-      async function moveAppointment(appointmentId){
-        const newDate=prompt('New date (YYYY-MM-DD):'); if(!newDate) return;
-        const newTime=prompt('New time (HH:MM, 24h):'); if(!newTime) return;
-        const newLocal=new Date(`${newDate}T${newTime}:00`);
-        const appt=allAppointments.find(a=>a.id===appointmentId); const staffId=appt?appt.staffId:null;
-        if(isTimeBlockedForStaff(staffId,newLocal)){alert('This time is blocked for this staff member. Please choose another time.'); return;}
-        const newIso=newLocal.toISOString();
-        showLoading('Moving appointment…');
-        const {error}=await supabaseClient.from('appointments').update({start_datetime:newIso,status:'Scheduled',updated_at:new Date().toISOString()}).eq('id',appointmentId);
-        hideLoading();
-        if(error){alert('Error moving appointment');return;}
-        await refreshAllAppointments(); buildClientStats(); applyCurrentFilter(); renderCalendarIfNeeded();
-        playBeep(820,.1); showToast('Appointment moved');
-      }
+async function moveAppointment(appointmentId){
+  const appt = allAppointments.find(a => a.id === appointmentId);
+  if(!appt){ alert('Appointment not found.'); return; }
+
+  const newDate = prompt('New date (YYYY-MM-DD):'); if(!newDate) return;
+  const newTime = prompt('New time (HH:MM, 24h):'); if(!newTime) return;
+
+  // build the new local Date
+  const newLocal = new Date(`${newDate}T${newTime}:00`);
+
+  // check blocks/overlaps for SAME staff + SAME service as the existing appointment
+  const availability = await checkStaffAvailability(appt.staffId, appt.serviceId, newLocal, appt.id);
+  if (!availability.ok) {
+    if (availability.reason === 'blocked') {
+      alert('This time is blocked for this staff member. Please choose another time.');
+    } else if (availability.reason === 'busy') {
+      alert('This time overlaps with another appointment for this staff member.');
+    } else {
+      alert('Could not check availability. Please try again.');
+    }
+    return; // ❌ don’t move
+  }
+
+  // ok to move
+  const newIso = newLocal.toISOString();
+
+  showLoading('Moving appointment…');
+  const { error } = await supabaseClient
+    .from('appointments')
+    .update({ start_datetime: newIso, status: 'Scheduled', updated_at: new Date().toISOString() })
+    .eq('id', appointmentId);
+  hideLoading();
+
+  if(error){ alert('Error moving appointment'); return; }
+
+  await refreshAllAppointments();
+  buildClientStats();
+  applyCurrentFilter();
+  renderCalendarIfNeeded();
+  playBeep(820,.1);
+  showToast('Appointment moved');
+}
 
       /* -------- Week & Month views -------- */
       function setMainView(view){
@@ -1013,4 +1056,5 @@
     </script>
   </body>
 </html>
+
 
