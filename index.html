@@ -150,46 +150,6 @@
       .week-appt-pill:hover{background:#e5e7eb}
       .week-block-pill{background:#e5e7eb}
 
-      .week-slots{
-      margin-top:4px;
-      display:flex;
-      flex-direction:column;
-      gap:2px;
-      max-height:420px;
-      overflow-y:auto;
-      padding-right:2px;
-    }
-    
-    .week-slot{
-      font-size:11px;
-      padding:3px 4px;
-      border-radius:6px;
-      border:1px solid transparent;
-      cursor:pointer;
-      min-height:18px;
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-    }
-    
-    .week-slot.available:hover{
-      background:#f3f4f6;
-      border-color:#e5e7eb;
-    }
-    
-    .week-slot.booked{
-      background:#dbeafe;
-      border-color:#93c5fd;
-      font-weight:500;
-    }
-    
-    .week-slot.blocked{
-      background:#f3f4f6;
-      border-color:#e5e7eb;
-      color:#6b7280;
-    }
-
-
       .month-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
       .month-weekday-header{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);padding:4px 0;text-align:center}
       .month-day{background:#ffffff;border-radius:14px;padding:4px 6px;font-size:11px;min-height:74px;border:1px solid var(--border-subtle);display:flex;flex-direction:column}
@@ -283,19 +243,11 @@
         <div id="toast"></div>
 
         <!-- Appointment modal -->
-        <div id="appointmentModal" class="modal-overlay">
-          <div class="modal">
-            <div class="modal-header">
-              <div class="modal-title">Appointment</div>
-              <button class="modal-close" onclick="closeAppointmentModal()">&times;</button>
-            </div>
-            <div id="modalBody"></div>
-            <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:10px;">
-              <button class="btn-sm move" onclick="moveFromModal()">Move</button>
-              <button class="btn-sm cancel" onclick="cancelFromModal()">Cancel</button>
-            </div>
-          </div>
-        </div>
+<div id="modalActions" style="display:flex; justify-content:flex-end; gap:8px; margin-top:10px;">
+  <button class="btn-sm move" onclick="moveFromModal()">Move</button>
+  <button class="btn-sm cancel" onclick="cancelFromModal()">Cancel</button>
+</div>
+
 
         <!-- CALENDAR SECTION -->
         <div id="calendarSection">
@@ -506,6 +458,95 @@
   return Number(sel.value);
 }
 
+      // Open a "Day overview" modal that lists all appts/blocks for a given dateKey (YYYY-MM-DD)
+// Includes an "Add slot" button to create a booking on that date.
+function openDayModal(dateKey){
+  const titleEl  = document.querySelector('#appointmentModal .modal-title');
+  const actions  = document.getElementById('modalActions');
+  const body     = document.getElementById('modalBody');
+
+  const niceDate = new Date(dateKey+'T00:00:00')
+    .toLocaleDateString(undefined,{ weekday:'long', year:'numeric', month:'short', day:'numeric' });
+
+  // Build lists
+  const appts = (allAppointments||[])
+    .filter(a => a.dateKey === dateKey)
+    .sort((a,b)=> a.startDate - b.startDate);
+
+  const dayBlocks = (blocks||[])
+    .filter(b => blockAppliesToDate(b, dateKey))
+    .sort((a,b)=> a.startDate - b.startDate);
+
+  let html = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+      <div style="font-size:12px; color:var(--text-muted);">${niceDate}</div>
+      <button class="btn-sm" onclick="addSlotForDay('${dateKey}')">+ Add slot</button>
+    </div>
+  `;
+
+  if(!appts.length && !dayBlocks.length){
+    html += `<div style="font-size:12px; color:var(--text-muted);">No entries.</div>`;
+  } else {
+    html += `<div>`;
+    appts.forEach(a=>{
+      const t = a.startDate.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+      html += `
+        <div class="appointment" style="padding:6px 0; cursor:pointer;"
+             onclick="openAppointmentDetailsById(${a.id})">
+          <div class="left">
+            <div class="time">${t}</div>
+            <div class="client">${a.clientName}</div>
+            <div class="service" style="color:var(--text-muted);">${a.serviceName||''}</div>
+          </div>
+        </div>`;
+    });
+    dayBlocks.forEach(b=>{
+      const s=b.startDate.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+      const e=b.endDate.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+      html += `
+        <div class="appointment block-appointment" style="padding:6px 0;">
+          <div class="left">
+            <div class="time">${s}–${e}</div>
+            <div class="block-label-text">Blocked: ${b.label||b.type||'Block'}</div>
+            <div class="block-meta-text">${b.staffName?('Staff: '+b.staffName):'All staff'}</div>
+          </div>
+        </div>`;
+    });
+    html += `</div>`;
+  }
+
+  titleEl.textContent = 'Day overview';
+  body.innerHTML = html;
+
+  // Hide Move/Cancel for day overview
+  if(actions) actions.style.display = 'none';
+
+  document.getElementById('appointmentModal').style.display='flex';
+}
+
+function openAppointmentDetailsById(id){
+  const a = allAppointments.find(x=>x.id===id);
+  if(a){ openAppointmentDetails(a); }
+}
+
+// Lets you add a new slot for this date; pre-fills the form and scrolls to it.
+function addSlotForDay(dateKey){
+  // Ask for a time in HH:MM 24h format; you can swap to a nicer UI later
+  let t = prompt('New time (HH:MM, 24h):', '09:00');
+  if(!t) return;
+  t = t.trim();
+  if(!/^\d{2}:\d{2}$/.test(t)){ alert('Please use HH:MM format (e.g. 09:00)'); return; }
+
+  // Fill the "New appointment" pickers
+  document.getElementById('appointmentDate').value = dateKey;
+  document.getElementById('appointmentTime').value = t;
+
+  // Close modal and scroll to the top panel
+  closeAppointmentModal();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+
 
       /* -------- Sections -------- */
       function setSection(section){
@@ -548,6 +589,71 @@
         });
       }
 
+      function openDayModal(dateKey){
+  const titleEl = document.querySelector('#appointmentModal .modal-title');
+  const actionsEl = document.getElementById('modalActions');
+  const body = document.getElementById('modalBody');
+
+  const niceDate = new Date(dateKey+'T00:00:00').toLocaleDateString(
+    undefined, { weekday:'long', year:'numeric', month:'short', day:'numeric' }
+  );
+
+  // Build full list
+  const appts = (allAppointments||[])
+    .filter(a => a.dateKey === dateKey)
+    .sort((a,b)=> a.startDate - b.startDate);
+
+  const dayBlocks = blocks
+    .filter(b => blockAppliesToDate(b, dateKey))
+    .sort((a,b)=> a.startDate - b.startDate);
+
+  let html = `<div style="font-size:12px; color:var(--text-muted); margin-bottom:6px;">${niceDate}</div>`;
+
+  if(!appts.length && !dayBlocks.length){
+    html += `<div style="font-size:12px; color:var(--text-muted);">No entries.</div>`;
+  } else {
+    html += `<div>`;
+    appts.forEach(a=>{
+      const t = a.startDate.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+      html += `
+        <div class="appointment" style="padding:6px 0; cursor:pointer;"
+             onclick="openAppointmentDetailsById(${a.id})">
+          <div class="left">
+            <div class="time">${t}</div>
+            <div class="client">${a.clientName}</div>
+            <div class="service" style="color:var(--text-muted);">${a.serviceName||''}</div>
+          </div>
+        </div>`;
+    });
+    dayBlocks.forEach(b=>{
+      const s=b.startDate.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+      const e=b.endDate.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+      html += `
+        <div class="appointment block-appointment" style="padding:6px 0;">
+          <div class="left">
+            <div class="time">${s}–${e}</div>
+            <div class="block-label-text">Blocked: ${b.label||b.type||'Block'}</div>
+            <div class="block-meta-text">${b.staffName?('Staff: '+b.staffName):'All staff'}</div>
+          </div>
+        </div>`;
+    });
+    html += `</div>`;
+  }
+
+  titleEl.textContent = 'Day overview';
+  body.innerHTML = html;
+
+  // hide Move/Cancel buttons for day overview
+  if(actionsEl) actionsEl.style.display = 'none';
+
+  document.getElementById('appointmentModal').style.display='flex';
+}
+
+// helper used inside the day modal list
+function openAppointmentDetailsById(id){
+  const a = allAppointments.find(x=>x.id===id);
+  if(a){ openAppointmentDetails(a); }
+}
           // Check if a staff member is free for the entire service duration
     async function checkStaffAvailability(staffId, serviceId, localStart) {
       const service = services.find(s => String(s.id) === String(serviceId));
@@ -995,7 +1101,12 @@
           <div class="modal-row"><span class="modal-label">Email:</span> ${appt.clientEmail||'-'}</div>`;
         document.getElementById('appointmentModal').style.display='flex';
       }
-      function closeAppointmentModal(){document.getElementById('appointmentModal').style.display='none'; currentModalAppointment=null;}
+function closeAppointmentModal(){
+  document.getElementById('appointmentModal').style.display='none';
+  currentModalAppointment=null;
+  const actionsEl = document.getElementById('modalActions');
+  if(actionsEl) actionsEl.style.display = 'flex'; // restore for single-appointment modal
+}
       function moveFromModal(){if(!currentModalAppointment) return; moveAppointment(currentModalAppointment.id); closeAppointmentModal();}
       function cancelFromModal(){if(!currentModalAppointment) return; cancelAppointment(currentModalAppointment.id); closeAppointmentModal();}
 
@@ -1019,113 +1130,59 @@
 
       function getWeekStart(date){const d=new Date(date); const day=d.getDay(); const diff=day===0?-6:1-day; d.setDate(d.getDate()+diff); d.setHours(0,0,0,0); return d;}
 function renderWeekCalendar(){
-  const container=document.getElementById('calendarContainer');
-  container.innerHTML='';
+  const container=document.getElementById('calendarContainer'); container.innerHTML='';
+  const base=new Date(calendarBaseDate); const weekStart=getWeekStart(base);
 
-  const base=new Date(calendarBaseDate);
-  const weekStart=getWeekStart(base);
-  const selectedStaffId = getSelectedStaffIdForCalendar();
-
-  // Header
-  const header=document.createElement('div');
-  header.className='calendar-header';
-  const title=document.createElement('div');
-  title.className='calendar-header-title';
+  const header=document.createElement('div'); header.className='calendar-header';
+  const title=document.createElement('div'); title.className='calendar-header-title';
   const end=new Date(weekStart); end.setDate(end.getDate()+6);
-  title.textContent='Week view: '
-    + weekStart.toLocaleDateString(undefined,{month:'short',day:'numeric'})
-    + ' – '
-    + end.toLocaleDateString(undefined,{month:'short',day:'numeric'});
+  title.textContent='Week view: '+weekStart.toLocaleDateString(undefined,{month:'short',day:'numeric'})+' – '+end.toLocaleDateString(undefined,{month:'short',day:'numeric'});
   const nav=document.createElement('div'); nav.className='calendar-nav';
-  const prevBtn=document.createElement('button'); prevBtn.textContent='<';
-  prevBtn.onclick=function(){calendarBaseDate.setDate(calendarBaseDate.getDate()-7); renderWeekCalendar();};
-  const nextBtn=document.createElement('button'); nextBtn.textContent='>';
-  nextBtn.onclick=function(){calendarBaseDate.setDate(calendarBaseDate.getDate()+7); renderWeekCalendar();};
-  nav.appendChild(prevBtn); nav.appendChild(nextBtn);
-  header.appendChild(title); header.appendChild(nav);
-  container.appendChild(header);
+  const prevBtn=document.createElement('button'); prevBtn.textContent='<'; prevBtn.onclick=function(){calendarBaseDate.setDate(calendarBaseDate.getDate()-7); renderWeekCalendar();};
+  const nextBtn=document.createElement('button'); nextBtn.textContent='>'; nextBtn.onclick=function(){calendarBaseDate.setDate(calendarBaseDate.getDate()+7); renderWeekCalendar();};
+  nav.appendChild(prevBtn); nav.appendChild(nextBtn); header.appendChild(title); header.appendChild(nav); container.appendChild(header);
 
-  // Only show appointments for selected staff (if any)
-  const apptsForStaff = selectedStaffId
-    ? allAppointments.filter(a => a.staffId === selectedStaffId)
-    : allAppointments.slice();
-
-  const groups=groupByDate(apptsForStaff);
   const grid=document.createElement('div'); grid.className='week-grid';
-
-  const startHour=7;        // 07:00
-  const endHour=21;         // up to 21:00
-  const stepMinutes=30;     // 30 min slots
-
+  const groups=groupByDate(allAppointments);
   for(let i=0;i<7;i++){
-    const dayDate=new Date(weekStart);
-    dayDate.setDate(weekStart.getDate()+i);
-    dayDate.setHours(0,0,0,0);
-    const key=toDateKeyFromDate(dayDate);
-
-    const cell=document.createElement('div');
-    cell.className='week-day';
-    const today=new Date(); today.setHours(0,0,0,0);
-    if(dayDate.getTime()===today.getTime()) cell.classList.add('today');
-
-    const headerRow=document.createElement('div');
-    headerRow.className='week-day-header';
-    const label=document.createElement('div');
-    label.className='week-day-label';
-    label.textContent=dayDate.toLocaleDateString(undefined,{weekday:'short'});
-    const num=document.createElement('div');
-    num.className='week-day-number';
-    num.textContent=dayDate.getDate();
-    headerRow.appendChild(label);
-    headerRow.appendChild(num);
-    cell.appendChild(headerRow);
-
-    const slotsWrapper=document.createElement('div');
-    slotsWrapper.className='week-slots';
-
+    const dayDate=new Date(weekStart); dayDate.setDate(weekStart.getDate()+i); const key=toDateKeyFromDate(dayDate);
     const dayAppts=(groups[key]||[]).slice().sort((a,b)=>a.startDate-b.startDate);
+
+    const cell=document.createElement('div'); cell.className='week-day';
+    const today=new Date(); today.setHours(0,0,0,0); if(dayDate.getTime()===today.getTime()) cell.classList.add('today');
+
+    const headerRow=document.createElement('div'); headerRow.className='week-day-header';
+    const label=document.createElement('div'); label.className='week-day-label'; label.textContent=dayDate.toLocaleDateString(undefined,{weekday:'short'});
+    const num=document.createElement('div'); num.className='week-day-number'; num.textContent=dayDate.getDate();
+    headerRow.appendChild(label); headerRow.appendChild(num); cell.appendChild(headerRow);
+
+    const list=document.createElement('div'); list.className='week-day-appointments';
+
+    dayAppts.forEach(a=>{
+      const pill=document.createElement('div');
+      pill.className='week-appt-pill';
+      pill.textContent=`${a.time} – ${a.clientName}`;
+      pill.onclick=function(){openAppointmentDetails(a);};
+      list.appendChild(pill);
+    });
+
     const dayBlocks=blocks.filter(b=>blockAppliesToDate(b,key)).sort((a,b)=>a.startDate-b.startDate);
+    dayBlocks.forEach(b=>{
+      const pill=document.createElement('div');
+      pill.className='week-appt-pill week-block-pill';
+      pill.textContent=`Blocked: ${b.label||b.type||''} (${b.staffName})`;
+      list.appendChild(pill);
+    });
 
-    for(let h=startHour; h<endHour; h++){
-      for(let m=0; m<60; m+=stepMinutes){
-        const slotStart=new Date(dayDate);
-        slotStart.setHours(h,m,0,0);
-        const slotEnd=new Date(slotStart.getTime()+stepMinutes*60000);
-
-        // find appointment overlapping this slot
-        const apptHere=dayAppts.find(a=>a.startDate < slotEnd && a.endDate > slotStart);
-
-        // any block at this time?
-        const blockHere = isTimeBlockedForStaff(selectedStaffId, slotStart);
-
-        const slotDiv=document.createElement('div');
-        slotDiv.className='week-slot';
-
-        const timeLabel=slotStart.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-
-        if(apptHere){
-          slotDiv.classList.add('booked');
-          slotDiv.textContent = `${timeLabel} – ${apptHere.clientName}`;
-          slotDiv.onclick = function(){ openAppointmentDetails(apptHere); };
-        } else if(blockHere){
-          slotDiv.classList.add('blocked');
-          slotDiv.textContent = `${timeLabel} – blocked`;
-        } else {
-          slotDiv.classList.add('available');
-          slotDiv.textContent = timeLabel;
-          slotDiv.onclick = function(){ handleSlotClick(slotStart); };
-        }
-
-        slotsWrapper.appendChild(slotDiv);
-      }
+    if(!dayAppts.length && !dayBlocks.length){
+      const empty=document.createElement('div'); empty.style.fontSize='11px'; empty.style.color='#9ca3af'; empty.textContent='No entries'; list.appendChild(empty);
     }
 
-    cell.appendChild(slotsWrapper);
-    grid.appendChild(cell);
+    cell.appendChild(list); grid.appendChild(cell);
   }
-
   container.appendChild(grid);
 }
+
 
       function renderMonthCalendar(){
         const container=document.getElementById('calendarContainer'); container.innerHTML='';
@@ -1158,12 +1215,25 @@ function renderWeekCalendar(){
           const headerRow=document.createElement('div'); headerRow.className='month-day-header';
           const num=document.createElement('div'); num.className='month-day-number'; num.textContent=inMonth?dayNum:'';
           headerRow.appendChild(num); cell.appendChild(headerRow);
+          headerRow.onclick = function(){ if(inMonth) openDayModal(key); };
+headerRow.style.cursor = inMonth ? 'pointer' : 'default';
+
           if(inMonth && cellDate.toDateString()===today.toDateString()) cell.classList.add('today');
 
           const dots=document.createElement('div'); dots.className='month-day-dots';
           dayAppts.slice(0,3).forEach(a=>{const dot=document.createElement('div'); dot.className='month-dot'; dot.textContent=`${a.time} ${a.clientName}`; dot.onclick=function(){openAppointmentDetails(a);}; dots.appendChild(dot);});
           dayBlocks.slice(0,2).forEach(b=>{const dot=document.createElement('div'); dot.className='month-dot month-dot-block'; dot.textContent=`Block: ${b.label||b.type}`; dots.appendChild(dot);});
-          if(dayAppts.length>3 || dayBlocks.length>2){const moreCount=Math.max(0,dayAppts.length-3)+Math.max(0,dayBlocks.length-2); if(moreCount>0){const more=document.createElement('div'); more.className='month-dot month-dot-more'; more.textContent=`+${moreCount} more`; dots.appendChild(more);}}
+         if(dayAppts.length>3 || dayBlocks.length>2){
+  const moreCount=Math.max(0,dayAppts.length-3)+Math.max(0,dayBlocks.length-2);
+  if(moreCount>0){
+    const more=document.createElement('div');
+    more.className='month-dot month-dot-more';
+    more.textContent=`+${moreCount} more`;
+    more.onclick=function(){ openDayModal(key); };     // << enable expand
+    dots.appendChild(more);
+  }
+}
+
 
           cell.appendChild(dots); grid.appendChild(cell);
         }
@@ -1264,4 +1334,5 @@ function renderWeekCalendar(){
     </script>
   </body>
 </html>
+
 
