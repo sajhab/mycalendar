@@ -150,6 +150,46 @@
       .week-appt-pill:hover{background:#e5e7eb}
       .week-block-pill{background:#e5e7eb}
 
+      .week-slots{
+      margin-top:4px;
+      display:flex;
+      flex-direction:column;
+      gap:2px;
+      max-height:420px;
+      overflow-y:auto;
+      padding-right:2px;
+    }
+    
+    .week-slot{
+      font-size:11px;
+      padding:3px 4px;
+      border-radius:6px;
+      border:1px solid transparent;
+      cursor:pointer;
+      min-height:18px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+    }
+    
+    .week-slot.available:hover{
+      background:#f3f4f6;
+      border-color:#e5e7eb;
+    }
+    
+    .week-slot.booked{
+      background:#dbeafe;
+      border-color:#93c5fd;
+      font-weight:500;
+    }
+    
+    .week-slot.blocked{
+      background:#f3f4f6;
+      border-color:#e5e7eb;
+      color:#6b7280;
+    }
+
+
       .month-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
       .month-weekday-header{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);padding:4px 0;text-align:center}
       .month-day{background:#ffffff;border-radius:14px;padding:4px 6px;font-size:11px;min-height:74px;border:1px solid var(--border-subtle);display:flex;flex-direction:column}
@@ -460,6 +500,13 @@
       }
       async function handleLogout(){await supabaseClient.auth.signOut(); currentUser=null; showLogin();}
 
+      function getSelectedStaffIdForCalendar(){
+  const sel=document.getElementById('staffSelect');
+  if(!sel || !sel.value) return null;
+  return Number(sel.value);
+}
+
+
       /* -------- Sections -------- */
       function setSection(section){
         currentSection=section;
@@ -476,8 +523,14 @@
         if(section==='clients') renderClientList();
         else if(section==='blocks') renderBlocksList();
       }
-
-      /* -------- Date helpers -------- */
+    function handleSlotClick(slotDate){
+      // slotDate is a JS Date with correct day+time
+      document.getElementById('appointmentDate').value = toDateKeyFromDate(slotDate);
+      document.getElementById('appointmentTime').value = toTimeInputFromDate(slotDate);
+      // scroll to the "New appointment" panel
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+     /* -------- Date helpers -------- */
       function toDateKeyFromDate(d){const y=d.getFullYear();const m=String(d.getMonth()+1).padStart(2,'0');const day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`;}
       function toTimeInputFromDate(d){const h=String(d.getHours()).padStart(2,'0');const m=String(d.getMinutes()).padStart(2,'0');return `${h}:${m}`;}
       function blockAppliesToDate(block,dateKey){const s=toDateKeyFromDate(block.startDate);const e=toDateKeyFromDate(block.endDate);return dateKey>=s && dateKey<=e;}
@@ -495,6 +548,44 @@
         });
       }
 
+          // Check if a staff member is free for the entire service duration
+    async function checkStaffAvailability(staffId, serviceId, localStart) {
+      const service = services.find(s => String(s.id) === String(serviceId));
+      if (!service || !service.duration_minutes) {
+        // If we somehow don't have the duration, just allow (or alert)
+        return { ok: true };
+      }
+    
+      const durationMinutes = Number(service.duration_minutes);
+      const localEnd = new Date(localStart.getTime() + durationMinutes * 60000);
+    
+      // 1) Check blocks (start OR end inside a blocked range)
+      if (isTimeBlockedForStaff(staffId, localStart) ||
+          isTimeBlockedForStaff(staffId, localEnd)) {
+        return { ok: false, reason: 'blocked' };
+      }
+    
+      const startIso = localStart.toISOString();
+      const endIso   = localEnd.toISOString();
+    
+      // 2) Check overlapping appointments for that staff:
+      //    overlap if existing.start < newEnd AND existing.end > newStart
+      const { data, error } = await supabaseClient
+        .from('appointments')
+        .select('id')
+        .eq('staff_id', Number(staffId))
+        .neq('status', 'Cancelled')
+        .lt('start_datetime', endIso)
+        .gt('end_datetime', startIso);
+    
+      if (error) {
+        console.error('Availability check error', error);
+        return { ok: false, reason: 'error' };
+      }
+    
+      const hasConflict = data && data.length > 0;
+      return { ok: !hasConflict, reason: hasConflict ? 'busy' : null };
+    }
       /* -------- Data loading -------- */
       async function loadClients(){
         const {data,error}=await supabaseClient.from('clients').select('*').order('name',{ascending:true});
@@ -525,26 +616,48 @@
         renderBlocksList(); renderCalendarIfNeeded();
       }
       async function refreshAllAppointments(){
-        const {data,error}=await supabaseClient
-          .from('appointments')
-          .select(`id,client_id,service_id,staff_id,start_datetime,status,reminder_sent,
-                   clients ( name, phone, email ), services ( name, price_eur ), staff ( name )`)
+      const {data,error}=await supabaseClient
+        .from('appointments')
+        .select(`id,client_id,service_id,staff_id,start_datetime,end_datetime,status,reminder_sent,
+                 clients ( name, phone, email ),
+                 services ( name, price_eur, duration_minutes ),
+                 staff ( name )`)
           .neq('status','Cancelled')
           .order('start_datetime',{ascending:true});
         if(error){alert('Error loading appointments');return;}
-        allAppointments=(data||[]).map(r=>{
-          const dt=new Date(r.start_datetime);
-          const timeText=dt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',timeZone:'Europe/Malta'});
-          const dateKey=dt.toLocaleDateString('en-CA',{timeZone:'Europe/Malta'});
-          return {
-            id:r.id, clientId:r.client_id, serviceId:r.service_id, staffId:r.staff_id,
-            staffName:r.staff?.name||'', dateKey, time:timeText, status:r.status, reminderSent:r.reminder_sent,
-            clientName:r.clients?.name||'(Unknown)', clientPhone:r.clients?.phone||'', clientEmail:r.clients?.email||'',
-            serviceName:r.services?.name||'(Unknown service)', price:r.services?.price_eur||null, startDate:dt
-          };
-        });
+      allAppointments=(data||[]).map(r=>{
+        const start = new Date(r.start_datetime);
+        let end;
+        if (r.end_datetime) {
+          end = new Date(r.end_datetime);
+        } else {
+          const dur = r.services?.duration_minutes ? Number(r.services.duration_minutes) : 0;
+          end = new Date(start.getTime() + dur * 60000);
+        }
+      
+        const timeText=start.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',timeZone:'Europe/Malta'});
+        const dateKey=start.toLocaleDateString('en-CA',{timeZone:'Europe/Malta'});
+      
+        return {
+          id:r.id,
+          clientId:r.client_id,
+          serviceId:r.service_id,
+          staffId:r.staff_id,
+          staffName:r.staff?.name||'',
+          dateKey,
+          time:timeText,
+          status:r.status,
+          reminderSent:r.reminder_sent,
+          clientName:r.clients?.name||'(Unknown)',
+          clientPhone:r.clients?.phone||'',
+          clientEmail:r.clients?.email||'',
+          serviceName:r.services?.name||'(Unknown service)',
+          price:r.services?.price_eur||null,
+          startDate:start,
+          endDate:end
+        };
+      });
       }
-
       /* -------- Selects -------- */
       function populateClientSelect(list){
         const sel=document.getElementById('clientSelect');
@@ -660,13 +773,23 @@
         const ok=await ensureClientHasContact(clientId);
         if(!ok){return;}
 
-        const localDateTime=new Date(`${date}T${time}:00`);
-        if(isTimeBlockedForStaff(staffId,localDateTime)){
-          alert('This time is blocked for this staff member (break / vacation). Please choose another time.');
+        const localDateTime = new Date(`${date}T${time}:00`);
+        
+        // check staff + duration availability
+        const availability = await checkStaffAvailability(staffId, serviceId, localDateTime);
+        if (!availability.ok) {
+          if (availability.reason === 'blocked') {
+            alert('This time is blocked for this staff member (break / vacation). Please choose another time.');
+          } else if (availability.reason === 'busy') {
+            alert('This staff member already has another appointment in this time range.');
+          } else {
+            alert('Could not check availability. Please try again.');
+          }
           return;
         }
+        
+        const startIso = localDateTime.toISOString();
 
-        const startIso=localDateTime.toISOString();
 
         showLoading('Saving appointment…');
         const {error}=await supabaseClient.from('appointments').insert([{
@@ -895,46 +1018,114 @@
       function renderCalendarIfNeeded(){ if(currentMainView==='week') renderWeekCalendar(); else if(currentMainView==='month') renderMonthCalendar(); }
 
       function getWeekStart(date){const d=new Date(date); const day=d.getDay(); const diff=day===0?-6:1-day; d.setDate(d.getDate()+diff); d.setHours(0,0,0,0); return d;}
-      function renderWeekCalendar(){
-        const container=document.getElementById('calendarContainer'); container.innerHTML='';
-        const base=new Date(calendarBaseDate); const weekStart=getWeekStart(base);
+function renderWeekCalendar(){
+  const container=document.getElementById('calendarContainer');
+  container.innerHTML='';
 
-        const header=document.createElement('div'); header.className='calendar-header';
-        const title=document.createElement('div'); title.className='calendar-header-title';
-        const end=new Date(weekStart); end.setDate(end.getDate()+6);
-        title.textContent='Week view: '+weekStart.toLocaleDateString(undefined,{month:'short',day:'numeric'})+' – '+end.toLocaleDateString(undefined,{month:'short',day:'numeric'});
-        const nav=document.createElement('div'); nav.className='calendar-nav';
-        const prevBtn=document.createElement('button'); prevBtn.textContent='<'; prevBtn.onclick=function(){calendarBaseDate.setDate(calendarBaseDate.getDate()-7); renderWeekCalendar();};
-        const nextBtn=document.createElement('button'); nextBtn.textContent='>'; nextBtn.onclick=function(){calendarBaseDate.setDate(calendarBaseDate.getDate()+7); renderWeekCalendar();};
-        nav.appendChild(prevBtn); nav.appendChild(nextBtn); header.appendChild(title); header.appendChild(nav); container.appendChild(header);
+  const base=new Date(calendarBaseDate);
+  const weekStart=getWeekStart(base);
+  const selectedStaffId = getSelectedStaffIdForCalendar();
 
-        const grid=document.createElement('div'); grid.className='week-grid';
-        const groups=groupByDate(allAppointments);
-        for(let i=0;i<7;i++){
-          const dayDate=new Date(weekStart); dayDate.setDate(weekStart.getDate()+i); const key=toDateKeyFromDate(dayDate);
-          const dayAppts=(groups[key]||[]).slice().sort((a,b)=>a.startDate-b.startDate);
+  // Header
+  const header=document.createElement('div');
+  header.className='calendar-header';
+  const title=document.createElement('div');
+  title.className='calendar-header-title';
+  const end=new Date(weekStart); end.setDate(end.getDate()+6);
+  title.textContent='Week view: '
+    + weekStart.toLocaleDateString(undefined,{month:'short',day:'numeric'})
+    + ' – '
+    + end.toLocaleDateString(undefined,{month:'short',day:'numeric'});
+  const nav=document.createElement('div'); nav.className='calendar-nav';
+  const prevBtn=document.createElement('button'); prevBtn.textContent='<';
+  prevBtn.onclick=function(){calendarBaseDate.setDate(calendarBaseDate.getDate()-7); renderWeekCalendar();};
+  const nextBtn=document.createElement('button'); nextBtn.textContent='>';
+  nextBtn.onclick=function(){calendarBaseDate.setDate(calendarBaseDate.getDate()+7); renderWeekCalendar();};
+  nav.appendChild(prevBtn); nav.appendChild(nextBtn);
+  header.appendChild(title); header.appendChild(nav);
+  container.appendChild(header);
 
-          const cell=document.createElement('div'); cell.className='week-day';
-          const today=new Date(); today.setHours(0,0,0,0); if(dayDate.getTime()===today.getTime()) cell.classList.add('today');
+  // Only show appointments for selected staff (if any)
+  const apptsForStaff = selectedStaffId
+    ? allAppointments.filter(a => a.staffId === selectedStaffId)
+    : allAppointments.slice();
 
-          const headerRow=document.createElement('div'); headerRow.className='week-day-header';
-          const label=document.createElement('div'); label.className='week-day-label'; label.textContent=dayDate.toLocaleDateString(undefined,{weekday:'short'});
-          const num=document.createElement('div'); num.className='week-day-number'; num.textContent=dayDate.getDate();
-          headerRow.appendChild(label); headerRow.appendChild(num); cell.appendChild(headerRow);
+  const groups=groupByDate(apptsForStaff);
+  const grid=document.createElement('div'); grid.className='week-grid';
 
-          const list=document.createElement('div'); list.className='week-day-appointments';
+  const startHour=7;        // 07:00
+  const endHour=21;         // up to 21:00
+  const stepMinutes=30;     // 30 min slots
 
-          dayAppts.forEach(a=>{const pill=document.createElement('div'); pill.className='week-appt-pill'; pill.textContent=`${a.time} – ${a.clientName}`; pill.onclick=function(){openAppointmentDetails(a);}; list.appendChild(pill);});
+  for(let i=0;i<7;i++){
+    const dayDate=new Date(weekStart);
+    dayDate.setDate(weekStart.getDate()+i);
+    dayDate.setHours(0,0,0,0);
+    const key=toDateKeyFromDate(dayDate);
 
-          const dayBlocks=blocks.filter(b=>blockAppliesToDate(b,key)).sort((a,b)=>a.startDate-b.startDate);
-          dayBlocks.forEach(b=>{const pill=document.createElement('div'); pill.className='week-appt-pill week-block-pill'; pill.textContent=`Blocked: ${b.label||b.type||''} (${b.staffName})`; list.appendChild(pill);});
+    const cell=document.createElement('div');
+    cell.className='week-day';
+    const today=new Date(); today.setHours(0,0,0,0);
+    if(dayDate.getTime()===today.getTime()) cell.classList.add('today');
 
-          if(!dayAppts.length && !dayBlocks.length){const empty=document.createElement('div'); empty.style.fontSize='11px'; empty.style.color='#9ca3af'; empty.textContent='No entries'; list.appendChild(empty);}
+    const headerRow=document.createElement('div');
+    headerRow.className='week-day-header';
+    const label=document.createElement('div');
+    label.className='week-day-label';
+    label.textContent=dayDate.toLocaleDateString(undefined,{weekday:'short'});
+    const num=document.createElement('div');
+    num.className='week-day-number';
+    num.textContent=dayDate.getDate();
+    headerRow.appendChild(label);
+    headerRow.appendChild(num);
+    cell.appendChild(headerRow);
 
-          cell.appendChild(list); grid.appendChild(cell);
+    const slotsWrapper=document.createElement('div');
+    slotsWrapper.className='week-slots';
+
+    const dayAppts=(groups[key]||[]).slice().sort((a,b)=>a.startDate-b.startDate);
+    const dayBlocks=blocks.filter(b=>blockAppliesToDate(b,key)).sort((a,b)=>a.startDate-b.startDate);
+
+    for(let h=startHour; h<endHour; h++){
+      for(let m=0; m<60; m+=stepMinutes){
+        const slotStart=new Date(dayDate);
+        slotStart.setHours(h,m,0,0);
+        const slotEnd=new Date(slotStart.getTime()+stepMinutes*60000);
+
+        // find appointment overlapping this slot
+        const apptHere=dayAppts.find(a=>a.startDate < slotEnd && a.endDate > slotStart);
+
+        // any block at this time?
+        const blockHere = isTimeBlockedForStaff(selectedStaffId, slotStart);
+
+        const slotDiv=document.createElement('div');
+        slotDiv.className='week-slot';
+
+        const timeLabel=slotStart.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+
+        if(apptHere){
+          slotDiv.classList.add('booked');
+          slotDiv.textContent = `${timeLabel} – ${apptHere.clientName}`;
+          slotDiv.onclick = function(){ openAppointmentDetails(apptHere); };
+        } else if(blockHere){
+          slotDiv.classList.add('blocked');
+          slotDiv.textContent = `${timeLabel} – blocked`;
+        } else {
+          slotDiv.classList.add('available');
+          slotDiv.textContent = timeLabel;
+          slotDiv.onclick = function(){ handleSlotClick(slotStart); };
         }
-        container.appendChild(grid);
+
+        slotsWrapper.appendChild(slotDiv);
       }
+    }
+
+    cell.appendChild(slotsWrapper);
+    grid.appendChild(cell);
+  }
+
+  container.appendChild(grid);
+}
 
       function renderMonthCalendar(){
         const container=document.getElementById('calendarContainer'); container.innerHTML='';
@@ -1073,3 +1264,4 @@
     </script>
   </body>
 </html>
+
