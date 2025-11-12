@@ -407,6 +407,21 @@
         });
       }
 
+            // --- Modal action helpers (add these) ---
+      function moveFromModal(){
+        if(!currentModalAppointment) return;
+        moveAppointment(currentModalAppointment.id);
+        closeAppointmentModal();
+      }
+      
+      function cancelFromModal(){
+        if(!currentModalAppointment) return;
+        cancelAppointment(currentModalAppointment.id);
+        closeAppointmentModal();
+      }
+
+      
+
       /* -------- Data loading -------- */
       async function loadClients(){
         const {data,error}=await supabaseClient.from('clients').select('*').order('name',{ascending:true});
@@ -998,3 +1013,4 @@
     </script>
   </body>
 </html>
+
