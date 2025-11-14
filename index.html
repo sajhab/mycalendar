@@ -638,32 +638,50 @@
         return true;
       }
 
-      /* -------- Availability check (used for create + move) -------- */
-      async function checkStaffAvailability(staffId, serviceId, localStart, excludeId=null) {
-        const service = services.find(s => String(s.id) === String(serviceId));
-        if (!service || !service.duration_minutes) return { ok: true };
+/* -------- Availability check (used for create + move) -------- */
+async function checkStaffAvailability(staffId, serviceId, localStart, excludeId = null) {
+  const service = services.find(s => String(s.id) === String(serviceId));
+  if (!service || !service.duration_minutes) {
+    // If we don't know duration for some reason, don't block booking
+    return { ok: true };
+  }
 
-        const durationMinutes = Number(service.duration_minutes);
-        const localEnd = new Date(localStart.getTime() + durationMinutes * 60000);
+  const durationMinutes = Number(service.duration_minutes);
+  const localEnd = new Date(localStart.getTime() + durationMinutes * 60000);
+  const staffNumeric = Number(staffId);
 
-        // Overlap with appointment blocks?
-        const startIso = localStart.toISOString();
-        const endIso   = localEnd.toISOString();
+  // 1) Check overlaps with other appointments for this staff member
+  for (const a of allAppointments) {
+    if (excludeId && a.id === excludeId) continue;        // ignore the one we’re moving
+    if (!a.staffId || Number(a.staffId) !== staffNumeric) continue;
 
-        let q = supabaseClient
-          .from('appointments')
-          .select('id')
-          .eq('staff_id', Number(staffId))
-          .neq('status','Cancelled')
-          .lt('start_datetime', endIso)
-          .gt('end_datetime', startIso);
+    // compute end time for this existing appointment
+    let aEnd = a.endDate;
+    if (!aEnd) {
+      const svcA = services.find(s => String(s.id) === String(a.serviceId));
+      const durA = svcA?.duration_minutes ? Number(svcA.duration_minutes) : durationMinutes;
+      aEnd = new Date(a.startDate.getTime() + durA * 60000);
+    }
 
-        if (excludeId != null) q = q.neq('id', excludeId);
+    // overlap if existing.start < new.end AND existing.end > new.start
+    if (a.startDate < localEnd && aEnd > localStart) {
+      return { ok: false, reason: 'busy' };
+    }
+  }
 
-        const { data, error } = await q;
-        if (error) return { ok:false, reason:'error' };
+  // 2) Check overlaps with blocks (vacation, lunch, etc.)
+  for (const b of blocks) {
+    // block applies to this staff or to all staff
+    if (b.staffId && Number(b.staffId) !== staffNumeric) continue;
 
-        const hasConflict = data && data.length > 0;
+    if (b.startDate < localEnd && b.endDate > localStart) {
+      return { ok: false, reason: 'blocked' };
+    }
+  }
+
+  return { ok: true };
+}
+
 
         // Blocked times (rough check using start+end)
         if (!hasConflict) {
@@ -1298,4 +1316,5 @@
     </script>
   </body>
 </html>
+
 
