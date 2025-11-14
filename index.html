@@ -2,6 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
+    <title>mycalendar24</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
       :root{
@@ -172,7 +173,6 @@
               <button class="modal-close" onclick="closeAppointmentModal()">&times;</button>
             </div>
             <div id="modalBody"></div>
-            <!-- footer now has an id so we can hide/show for day view -->
             <div id="modalActions" style="display:flex; justify-content:flex-end; gap:8px; margin-top:10px;">
               <button class="btn-sm move" onclick="moveFromModal()">Move</button>
               <button class="btn-sm cancel" onclick="cancelFromModal()">Cancel</button>
@@ -182,6 +182,7 @@
 
         <!-- CALENDAR SECTION -->
         <div id="calendarSection">
+          <!-- New appointment -->
           <div class="panel">
             <div class="panel-header">
               <h2>New appointment</h2>
@@ -217,6 +218,60 @@
             </div>
 
             <button class="btn primary" onclick="saveAppointment()">Save appointment</button>
+          </div>
+
+          <!-- NEW: smart availability finder -->
+          <div class="panel">
+            <div class="panel-header">
+              <h2>Find next free slot</h2>
+            </div>
+
+            <div class="field-row">
+              <div class="field">
+                <label for="finderService">Service</label>
+                <select id="finderService"></select>
+              </div>
+              <div class="field">
+                <label for="finderStaff">Employee</label>
+                <select id="finderStaff"></select>
+              </div>
+            </div>
+
+            <div class="field-row">
+              <div class="field">
+                <label for="finderStartMode">Start from</label>
+                <select id="finderStartMode">
+                  <option value="today">Today</option>
+                  <option value="3w">In 3 weeks</option>
+                  <option value="4w">In 4 weeks</option>
+                  <option value="custom">Custom date</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="finderStartDate">Custom date</label>
+                <input type="date" id="finderStartDate" />
+              </div>
+            </div>
+
+            <div class="field-row">
+              <div class="field">
+                <label for="finderTimePref">Time of day</label>
+                <select id="finderTimePref">
+                  <option value="any">Any time</option>
+                  <option value="morning">Morning (09–12)</option>
+                  <option value="afternoon">Afternoon (12–17)</option>
+                  <option value="evening">Evening (17–20)</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>&nbsp;</label>
+                <button class="btn primary" style="width:100%;" onclick="handleFindSlots()">Find next slots</button>
+              </div>
+            </div>
+
+            <div id="finderResults" style="font-size:12px; margin-top:6px; color:var(--text-muted);">
+              No search yet.
+            </div>
           </div>
 
           <!-- New Client -->
@@ -262,7 +317,7 @@
         </div>
 
         <!-- CLIENTS -->
-        <div id="clientsSection" style="display:none;">
+        <div id="clientsSection" style="cpdisplay:none;">
           <div class="panel">
             <div class="panel-header"><h2>Clients</h2></div>
 
@@ -340,6 +395,11 @@
       const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh1em1tdXduam1leHZtc2prcmhzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxNzA3MzMsImV4cCI6MjA3Nzc0NjczM30.u-ahrY3z1pv3PHCm40okg6fdSvlhsWldWlVqQFNF5_g';
       const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+      // working hours & steps for suggestions
+      const WORK_START_HOUR = 9;
+      const WORK_END_HOUR   = 20;
+      const SLOT_STEP_MIN   = 30;
+
       let currentUser=null;
       let clients=[], services=[], staff=[], allAppointments=[], clientStats={}, blocks=[];
       let editingBlockId=null;
@@ -348,6 +408,7 @@
       let currentMainView='list';
       let calendarBaseDate=new Date();
       let currentModalAppointment=null;
+      let lastFinderResults=[];
 
       /* -------- SOUND -------- */
       let audioCtx=null;
@@ -397,29 +458,6 @@
         const e=block.endDate.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',timeZone:'Europe/Malta'});
         return `${s}–${e}`;
       }
-      function isTimeBlockedForStaff(staffId,dt){
-        const sid=staffId?Number(staffId):null;
-        return blocks.some(b=>{
-          const applies=(!b.staffId||!sid||b.staffId===sid);
-          if(!applies) return false;
-          return dt>=b.startDate && dt<=b.endDate;
-        });
-      }
-
-            // --- Modal action helpers (add these) ---
-      function moveFromModal(){
-        if(!currentModalAppointment) return;
-        moveAppointment(currentModalAppointment.id);
-        closeAppointmentModal();
-      }
-      
-      function cancelFromModal(){
-        if(!currentModalAppointment) return;
-        cancelAppointment(currentModalAppointment.id);
-        closeAppointmentModal();
-      }
-
-      
 
       /* -------- Data loading -------- */
       async function loadClients(){
@@ -485,18 +523,54 @@
         data.forEach(c=>{const opt=document.createElement('option'); opt.value=String(c.id); const extra=c.phone?` (${c.phone})`: (c.email?` (${c.email})`:'' ); opt.textContent=c.name+extra; sel.appendChild(opt);});
       }
       function populateServiceSelect(){
-        const sel=document.getElementById('serviceSelect'); sel.innerHTML='';
-        if(!services.length){const o=document.createElement('option'); o.value=''; o.textContent='No services yet'; sel.appendChild(o); return;}
-        services.forEach(s=>{const o=document.createElement('option'); o.value=String(s.id); const p=s.price_eur?` (€${s.price_eur})`:''; o.textContent=s.name+p; sel.appendChild(o);});
+        const sel=document.getElementById('serviceSelect');
+        const finder=document.getElementById('finderService');
+        sel.innerHTML=''; if(finder) finder.innerHTML='';
+        if(!services.length){
+          const o=document.createElement('option'); o.value=''; o.textContent='No services yet'; sel.appendChild(o);
+          if(finder){ const o2=o.cloneNode(true); finder.appendChild(o2); }
+          return;
+        }
+        services.forEach(s=>{
+          const text=s.name + (s.price_eur?` (€${s.price_eur})`:'');
+
+          const o=document.createElement('option'); o.value=String(s.id); o.textContent=text; sel.appendChild(o);
+
+          if(finder){
+            const o2=document.createElement('option'); o2.value=String(s.id); o2.textContent=text; finder.appendChild(o2);
+          }
+        });
       }
       function populateStaffSelects(){
         const blockSel=document.getElementById('blockStaff');
-        if(blockSel){ blockSel.innerHTML=''; const all=document.createElement('option'); all.value=''; all.textContent='All staff'; blockSel.appendChild(all);
-          staff.forEach(s=>{const o=document.createElement('option'); o.value=String(s.id); o.textContent=s.name; blockSel.appendChild(o);});}
-        const apptSel=document.getElementById('staffSelect'); if(apptSel){ apptSel.innerHTML='';
-          if(!staff.length){const o=document.createElement('option'); o.value=''; o.textContent='No staff'; apptSel.appendChild(o);}
-          else{staff.forEach((s,idx)=>{const o=document.createElement('option'); o.value=String(s.id); o.textContent=s.name; apptSel.appendChild(o); if(idx===0) apptSel.value=String(s.id);});}
+        const apptSel=document.getElementById('staffSelect');
+        const finderStaff=document.getElementById('finderStaff');
+
+        if(blockSel){
+          blockSel.innerHTML='';
+          const all=document.createElement('option'); all.value=''; all.textContent='All staff'; blockSel.appendChild(all);
         }
+        if(apptSel) apptSel.innerHTML='';
+        if(finderStaff) finderStaff.innerHTML='';
+
+        if(!staff.length){
+          if(apptSel){const o=document.createElement('option'); o.value=''; o.textContent='No staff'; apptSel.appendChild(o);}
+          if(finderStaff){const o2=document.createElement('option'); o2.value=''; o2.textContent='No staff'; finderStaff.appendChild(o2);}
+          return;
+        }
+
+        staff.forEach((s,idx)=>{
+          if(blockSel){
+            const o=document.createElement('option'); o.value=String(s.id); o.textContent=s.name; blockSel.appendChild(o);
+          }
+          if(apptSel){
+            const o=document.createElement('option'); o.value=String(s.id); o.textContent=s.name; apptSel.appendChild(o);
+            if(idx===0) apptSel.value=String(s.id);
+          }
+          if(finderStaff){
+            const o=document.createElement('option'); o.value=String(s.id); o.textContent=s.name; finderStaff.appendChild(o);
+          }
+        });
       }
       function filterClientsForBooking(){
         const input=document.getElementById('clientSearchBooking'); if(!input) return;
@@ -548,41 +622,45 @@
         return true;
       }
 
-// Check if a staff member is free for the entire service duration.
-// Optional 4th arg excludeId lets us ignore the appointment being moved.
-async function checkStaffAvailability(staffId, serviceId, localStart, excludeId = null) {
-  const service = services.find(s => String(s.id) === String(serviceId));
-  if (!service || !service.duration_minutes) return { ok: true };
+      /* -------- Availability check (used for create + move) -------- */
+      async function checkStaffAvailability(staffId, serviceId, localStart, excludeId=null) {
+        const service = services.find(s => String(s.id) === String(serviceId));
+        if (!service || !service.duration_minutes) return { ok: true };
 
-  const durationMinutes = Number(service.duration_minutes);
-  const localEnd = new Date(localStart.getTime() + durationMinutes * 60000);
+        const durationMinutes = Number(service.duration_minutes);
+        const localEnd = new Date(localStart.getTime() + durationMinutes * 60000);
 
-  // Blocked times?
-  if (isTimeBlockedForStaff(staffId, localStart) || isTimeBlockedForStaff(staffId, localEnd)) {
-    return { ok:false, reason:'blocked' };
-  }
+        // Overlap with appointment blocks?
+        const startIso = localStart.toISOString();
+        const endIso   = localEnd.toISOString();
 
-  const startIso = localStart.toISOString();
-  const endIso   = localEnd.toISOString();
+        let q = supabaseClient
+          .from('appointments')
+          .select('id')
+          .eq('staff_id', Number(staffId))
+          .neq('status','Cancelled')
+          .lt('start_datetime', endIso)
+          .gt('end_datetime', startIso);
 
-  let q = supabaseClient
-    .from('appointments')
-    .select('id')
-    .eq('staff_id', Number(staffId))
-    .neq('status', 'Cancelled')
-    // overlap: existing.start < newEnd AND existing.end > newStart
-    .lt('start_datetime', endIso)
-    .gt('end_datetime', startIso);
+        if (excludeId != null) q = q.neq('id', excludeId);
 
-  if (excludeId != null) q = q.neq('id', excludeId);
+        const { data, error } = await q;
+        if (error) return { ok:false, reason:'error' };
 
-  const { data, error } = await q;
-  if (error) return { ok:false, reason:'error' };
+        const hasConflict = data && data.length > 0;
 
-  const hasConflict = data && data.length > 0;
-  return { ok: !hasConflict, reason: hasConflict ? 'busy' : null };
-}
+        // Blocked times (rough check using start+end)
+        if (!hasConflict) {
+          const blocked =
+            blocks.some(b=>{
+              if(b.staffId && Number(b.staffId)!==Number(staffId)) return false;
+              return (localStart < b.endDate && localEnd > b.startDate);
+            });
+          if(blocked) return { ok:false, reason:'blocked' };
+        }
 
+        return { ok: !hasConflict, reason: hasConflict ? 'busy' : null };
+      }
 
       /* -------- Appointment create -------- */
       async function saveAppointment(){
@@ -623,6 +701,144 @@ async function checkStaffAvailability(staffId, serviceId, localStart, excludeId 
 
         await refreshAllAppointments(); buildClientStats(); applyCurrentFilter(); renderCalendarIfNeeded();
         playBeep(850,.12); showToast('Appointment saved');
+      }
+
+      /* -------- Smart finder -------- */
+      function handleFindSlots(){
+        const serviceId = document.getElementById('finderService').value;
+        const staffId   = document.getElementById('finderStaff').value;
+        const mode      = document.getElementById('finderStartMode').value;
+        const custom    = document.getElementById('finderStartDate').value;
+        const timePref  = document.getElementById('finderTimePref').value;
+        const div       = document.getElementById('finderResults');
+
+        if(!serviceId){ alert('Please choose a service.'); return; }
+        if(!staffId){ alert('Please choose an employee.'); return; }
+
+        let startDate = new Date();
+        startDate.setHours(0,0,0,0);
+
+        if(mode === '3w'){
+          startDate.setDate(startDate.getDate() + 21);
+        }else if(mode === '4w'){
+          startDate.setDate(startDate.getDate() + 28);
+        }else if(mode === 'custom'){
+          if(!custom){ alert('Please pick a custom date.'); return; }
+          startDate = new Date(custom+'T00:00:00');
+        }
+
+        const results = findNextSlotsLocal(serviceId, staffId, startDate, timePref, 5);
+        lastFinderResults = results;
+
+        if(!results.length){
+          div.style.color='var(--text-muted)';
+          div.innerHTML='No free slots found in the next 60 days for this configuration.';
+          return;
+        }
+
+        let html = '<div style="display:flex;flex-direction:column;gap:6px;">';
+        results.forEach((slot,idx)=>{
+          const dateLabel = slot.start.toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+          const timeLabel = slot.start.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+          html += `
+            <div style="display:flex;justify-content:space-between;align-items:center;border:1px solid #e5e7eb;border-radius:10px;padding:6px 8px;background:#fafafa;">
+              <div>
+                <div style="font-size:13px;font-weight:600;">${dateLabel}</div>
+                <div style="font-size:12px;color:var(--text-muted);">${timeLabel} (${slot.duration} min)</div>
+              </div>
+              <div style="display:flex;gap:4px;">
+                <button class="btn-sm" onclick="applyFinderSlot(${idx})">Use</button>
+                <button class="btn-sm" onclick="openDayModal('${slot.dateKey}')">Day</button>
+              </div>
+            </div>
+          `;
+        });
+        html += '</div>';
+        div.style.color='inherit';
+        div.innerHTML = html;
+      }
+
+      function findNextSlotsLocal(serviceId, staffId, startDate, timePref, maxSlots){
+        const svc = services.find(s=>String(s.id)===String(serviceId));
+        if(!svc || !svc.duration_minutes) return [];
+        const duration = Number(svc.duration_minutes);
+
+        const slots=[];
+        const maxDays = 60;
+        const startDay = new Date(startDate);
+        startDay.setHours(0,0,0,0);
+        const now = new Date();
+
+        for(let d=0; d<maxDays && slots.length<maxSlots; d++){
+          const day = new Date(startDay);
+          day.setDate(startDay.getDate()+d);
+
+          let dayStartHour = WORK_START_HOUR;
+          let dayEndHour   = WORK_END_HOUR;
+
+          if(timePref==='morning'){ dayStartHour=9; dayEndHour=12; }
+          else if(timePref==='afternoon'){ dayStartHour=12; dayEndHour=17; }
+          else if(timePref==='evening'){ dayStartHour=17; dayEndHour=20; }
+
+          const earliestMin = dayStartHour*60;
+          const latestMin   = Math.min(dayEndHour*60, WORK_END_HOUR*60) - duration;
+
+          if(latestMin < earliestMin) continue;
+
+          for(let m = earliestMin; m<=latestMin && slots.length<maxSlots; m += SLOT_STEP_MIN){
+            const h = Math.floor(m/60);
+            const mm = m % 60;
+            const start = new Date(day);
+            start.setHours(h,mm,0,0);
+            const end = new Date(start.getTime() + duration*60000);
+
+            // skip past times for "today"
+            if(start < now) continue;
+
+            if(isFreeSlotLocal(staffId, start, end)){
+              slots.push({
+                start,
+                end,
+                duration,
+                dateKey: toDateKeyFromDate(start),
+                time24: toTimeInputFromDate(start),
+                staffId,
+                serviceId
+              });
+            }
+          }
+        }
+        return slots;
+      }
+
+      function isFreeSlotLocal(staffId, start, end){
+        const sid = Number(staffId);
+
+        // appointments
+        for(const a of allAppointments){
+          if(!a.staffId || Number(a.staffId)!==sid) continue;
+          if(a.startDate < end && a.endDate > start) return false;
+        }
+
+        // blocks (staff-specific or all staff)
+        for(const b of blocks){
+          if(b.staffId && Number(b.staffId)!==sid) continue;
+          if(b.startDate < end && b.endDate > start) return false;
+        }
+        return true;
+      }
+
+      function applyFinderSlot(idx){
+        const slot = lastFinderResults[idx];
+        if(!slot) return;
+        // set service & staff to match
+        document.getElementById('serviceSelect').value = String(slot.serviceId);
+        document.getElementById('staffSelect').value   = String(slot.staffId);
+        // fill date/time in booking form
+        document.getElementById('appointmentDate').value = slot.dateKey;
+        document.getElementById('appointmentTime').value = slot.time24;
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        showToast('Slot applied to booking form');
       }
 
       /* -------- Client stats / list -------- */
@@ -752,7 +968,6 @@ async function checkStaffAvailability(staffId, serviceId, localStart, excludeId 
           <div class="modal-row"><span class="modal-label">Status:</span> ${appt.status||'Scheduled'}</div>
           <div class="modal-row"><span class="modal-label">Phone:</span> ${appt.clientPhone||'-'}</div>
           <div class="modal-row"><span class="modal-label">Email:</span> ${appt.clientEmail||'-'}</div>`;
-        // show footer for single-appointment view
         const actionsEl=document.getElementById('modalActions'); if(actionsEl) actionsEl.style.display='flex';
         document.getElementById('appointmentModal').style.display='flex';
       }
@@ -760,7 +975,7 @@ async function checkStaffAvailability(staffId, serviceId, localStart, excludeId 
         document.getElementById('appointmentModal').style.display='none';
         currentModalAppointment=null;
         const actionsEl=document.getElementById('modalActions');
-        if(actionsEl) actionsEl.style.display='flex'; // restore for next time
+        if(actionsEl) actionsEl.style.display='flex';
       }
       function openAppointmentDetailsById(id){
         const a=allAppointments.find(x=>x.id===id);
@@ -807,8 +1022,20 @@ async function checkStaffAvailability(staffId, serviceId, localStart, excludeId 
         }
 
         titleEl.textContent='Day overview'; body.innerHTML=html;
-        if(actionsEl) actionsEl.style.display='none'; // hide Move/Cancel for overview
+        if(actionsEl) actionsEl.style.display='none';
         document.getElementById('appointmentModal').style.display='flex';
+      }
+
+      // modal action helpers
+      function moveFromModal(){
+        if(!currentModalAppointment) return;
+        moveAppointment(currentModalAppointment.id);
+        closeAppointmentModal();
+      }
+      function cancelFromModal(){
+        if(!currentModalAppointment) return;
+        cancelAppointment(currentModalAppointment.id);
+        closeAppointmentModal();
       }
 
       /* -------- Cancel / Move -------- */
@@ -821,48 +1048,32 @@ async function checkStaffAvailability(staffId, serviceId, localStart, excludeId 
         await refreshAllAppointments(); buildClientStats(); applyCurrentFilter(); renderCalendarIfNeeded();
         playBeep(600,.1); showToast('Appointment cancelled');
       }
-async function moveAppointment(appointmentId){
-  const appt = allAppointments.find(a => a.id === appointmentId);
-  if(!appt){ alert('Appointment not found.'); return; }
+      async function moveAppointment(appointmentId){
+        const appt = allAppointments.find(a => a.id === appointmentId);
+        if(!appt){ alert('Appointment not found.'); return; }
 
-  const newDate = prompt('New date (YYYY-MM-DD):'); if(!newDate) return;
-  const newTime = prompt('New time (HH:MM, 24h):'); if(!newTime) return;
+        const newDate=prompt('New date (YYYY-MM-DD):'); if(!newDate) return;
+        const newTime=prompt('New time (HH:MM, 24h):'); if(!newTime) return;
+        const newLocal=new Date(`${newDate}T${newTime}:00`);
 
-  // build the new local Date
-  const newLocal = new Date(`${newDate}T${newTime}:00`);
+        const availability = await checkStaffAvailability(appt.staffId, appt.serviceId, newLocal, appt.id);
+        if (!availability.ok) {
+          if (availability.reason==='blocked') alert('This time is blocked for this staff member. Please choose another time.');
+          else if (availability.reason==='busy') alert('This time overlaps with another appointment for this staff member.');
+          else alert('Could not check availability. Please try again.');
+          return;
+        }
 
-  // check blocks/overlaps for SAME staff + SAME service as the existing appointment
-  const availability = await checkStaffAvailability(appt.staffId, appt.serviceId, newLocal, appt.id);
-  if (!availability.ok) {
-    if (availability.reason === 'blocked') {
-      alert('This time is blocked for this staff member. Please choose another time.');
-    } else if (availability.reason === 'busy') {
-      alert('This time overlaps with another appointment for this staff member.');
-    } else {
-      alert('Could not check availability. Please try again.');
-    }
-    return; // ❌ don’t move
-  }
-
-  // ok to move
-  const newIso = newLocal.toISOString();
-
-  showLoading('Moving appointment…');
-  const { error } = await supabaseClient
-    .from('appointments')
-    .update({ start_datetime: newIso, status: 'Scheduled', updated_at: new Date().toISOString() })
-    .eq('id', appointmentId);
-  hideLoading();
-
-  if(error){ alert('Error moving appointment'); return; }
-
-  await refreshAllAppointments();
-  buildClientStats();
-  applyCurrentFilter();
-  renderCalendarIfNeeded();
-  playBeep(820,.1);
-  showToast('Appointment moved');
-}
+        const newIso=newLocal.toISOString();
+        showLoading('Moving appointment…');
+        const {error}=await supabaseClient.from('appointments')
+          .update({start_datetime:newIso,status:'Scheduled',updated_at:new Date().toISOString()})
+          .eq('id',appointmentId);
+        hideLoading();
+        if(error){alert('Error moving appointment');return;}
+        await refreshAllAppointments(); buildClientStats(); applyCurrentFilter(); renderCalendarIfNeeded();
+        playBeep(820,.1); showToast('Appointment moved');
+      }
 
       /* -------- Week & Month views -------- */
       function setMainView(view){
@@ -881,7 +1092,6 @@ async function moveAppointment(appointmentId){
       function renderCalendarIfNeeded(){ if(currentMainView==='week') renderWeekCalendar(); else if(currentMainView==='month') renderMonthCalendar(); }
       function getWeekStart(date){const d=new Date(date); const day=d.getDay(); const diff=day===0?-6:1-day; d.setDate(d.getDate()+diff); d.setHours(0,0,0,0); return d;}
 
-      /* simple pills week view (your original) */
       function renderWeekCalendar(){
         const container=document.getElementById('calendarContainer'); container.innerHTML='';
         const base=new Date(calendarBaseDate); const weekStart=getWeekStart(base);
@@ -951,7 +1161,6 @@ async function moveAppointment(appointmentId){
           headerRow.appendChild(num); cell.appendChild(headerRow);
           if(inMonth && cellDate.toDateString()===today.toDateString()) cell.classList.add('today');
 
-          // make the header open day overview
           headerRow.onclick = function(){ if(inMonth) openDayModal(key); };
           headerRow.style.cursor = inMonth ? 'pointer' : 'default';
 
@@ -964,7 +1173,7 @@ async function moveAppointment(appointmentId){
               const more=document.createElement('div');
               more.className='month-dot month-dot-more';
               more.textContent=`+${moreCount} more`;
-              more.onclick=function(){ openDayModal(key); }; // expand on click
+              more.onclick=function(){ openDayModal(key); };
               dots.appendChild(more);
             }
           }
@@ -974,7 +1183,7 @@ async function moveAppointment(appointmentId){
         container.appendChild(grid);
       }
 
-      /* -------- Blocks UI (edit/delete) -------- */
+      /* -------- Blocks UI -------- */
       function renderBlocksList(){
         const list=document.getElementById('blocksList'); if(!list) return;
         if(!blocks.length){list.innerHTML='<div style="font-size:12px; color:var(--text-muted);">No upcoming blocks.</div>'; return;}
@@ -1032,6 +1241,24 @@ async function moveAppointment(appointmentId){
         await loadBlocks(); applyCurrentFilter(); renderCalendarIfNeeded(); playBeep(650,.1); showToast('Block deleted');
       }
 
+      /* -------- Export CSV -------- */
+      function exportAppointmentsCsv(){
+        if(!allAppointments.length){alert('No appointments to export.'); return;}
+        const from=document.getElementById('exportFrom').value; const to=document.getElementById('exportTo').value;
+        if(!from||!to){alert('Please select both From and To dates.'); return;}
+        if(from>to){alert('From date cannot be after To date.'); return;}
+        const rows=allAppointments.filter(a=>a.dateKey>=from && a.dateKey<=to);
+        if(!rows.length){alert('No appointments in this date range.'); return;}
+        const header=['Date','Time','Client','Phone','Email','Service','PriceEUR','Status','ReminderSent']; const lines=[header.join(',')];
+        rows.forEach(a=>{
+          const vals=[a.dateKey,a.time,a.clientName,a.clientPhone,a.clientEmail,a.serviceName,a.price!=null?a.price:'',a.status,a.reminderSent?'TRUE':'FALSE'];
+          const line=vals.map(v=>{const s=String(v??''); return '"'+s.replace(/"/g,'""')+'"';}).join(','); lines.push(line);
+        });
+        const csv=lines.join('\r\n'); const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}); const url=URL.createObjectURL(blob);
+        const link=document.createElement('a'); link.href=url; link.download=`appointments_${from.replace(/-/g,'')}_${to.replace(/-/g,'')}.csv`; document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(url);
+        playBeep(760,.1); showToast('CSV downloaded');
+      }
+
       /* -------- Init -------- */
       async function initApp(){
         showLoading('Loading…');
@@ -1055,6 +1282,3 @@ async function moveAppointment(appointmentId){
     </script>
   </body>
 </html>
-
-
-
