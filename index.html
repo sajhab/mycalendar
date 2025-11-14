@@ -888,34 +888,7 @@ function applyFinderSlot(idx){
         }
         return true;
       }
-
-      /* -------- Availability check (used for create + move) -------- */
-      async function (staffId, serviceId, localStart, excludeId=null) {
-        const service = services.find(s => String(s.id) === String(serviceId));
-        if (!service || !service.duration_minutes) return { ok: true };
-
-        const durationMinutes = Number(service.duration_minutes);
-        const localEnd = new Date(localStart.getTime() + durationMinutes * 60000);
-
-        // Overlap with appointment blocks?
-        const startIso = localStart.toISOString();
-        const endIso   = localEnd.toISOString();
-
-        let q = supabaseClient
-          .from('appointments')
-          .select('id')
-          .eq('staff_id', Number(staffId))
-          .neq('status','Cancelled')
-          .lt('start_datetime', endIso)
-          .gt('end_datetime', startIso);
-
-        if (excludeId != null) q = q.neq('id', excludeId);
-
-        const { data, error } = await q;
-        if (error) return { ok:false, reason:'error' };
-
-        const hasConflict = data && data.length > 0;
-
+     
         // Blocked times (rough check using start+end)
         if (!hasConflict) {
           const blocked =
@@ -1549,6 +1522,7 @@ function applyFinderSlot(idx){
     </script>
   </body>
 </html>
+
 
 
 
