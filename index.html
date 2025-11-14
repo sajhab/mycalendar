@@ -454,6 +454,257 @@
         if(section==='clients') renderClientList(); else if(section==='blocks') renderBlocksList();
       }
 
+      /* -------- Availability check (used for create + move) -------- */
+async function checkStaffAvailability(staffId, serviceId, localStart, excludeId = null) {
+  const service = services.find(s => String(s.id) === String(serviceId));
+  if (!service || !service.duration_minutes) {
+    // if we don't know the duration, don't block booking
+    return { ok: true };
+  }
+
+  const durationMinutes = Number(service.duration_minutes);
+  const localEnd = new Date(localStart.getTime() + durationMinutes * 60000);
+  const sid = Number(staffId);
+
+  // 1) Check conflicts with OTHER appointments
+  let busy = false;
+  for (const a of allAppointments) {
+    if (!a.staffId || Number(a.staffId) !== sid) continue;
+    if (excludeId && a.id === excludeId) continue;
+
+    // compute this appointment's end
+    let aEnd = a.endDate;
+    if (!aEnd) {
+      const svcA = services.find(s => String(s.id) === String(a.serviceId));
+      const durA = svcA?.duration_minutes ? Number(svcA.duration_minutes) : 0;
+      aEnd = new Date(a.startDate.getTime() + durA * 60000);
+    }
+
+    // overlap: a.start < newEnd AND aEnd > newStart
+    if (a.startDate < localEnd && aEnd > localStart) {
+      busy = true;
+      break;
+    }
+  }
+
+  // 2) Check conflicts with blocks (vacation, lunch, etc.)
+  let blocked = false;
+  for (const b of blocks) {
+    // block applies to this staff or to all staff
+    if (b.staffId && Number(b.staffId) !== sid) continue;
+    if (b.startDate < localEnd && b.endDate > localStart) {
+      blocked = true;
+      break;
+    }
+  }
+
+  if (blocked) return { ok: false, reason: 'blocked' };
+  if (busy)    return { ok: false, reason: 'busy' };
+  return { ok: true };
+}
+
+/* -------- Appointment create -------- */
+async function saveAppointment(){
+  const clientId  = document.getElementById('clientSelect').value;
+  const staffId   = document.getElementById('staffSelect').value;
+  const serviceId = document.getElementById('serviceSelect').value;
+  const date      = document.getElementById('appointmentDate').value;
+  const time      = document.getElementById('appointmentTime').value;
+
+  if(!clientId){alert('Please select a client.');return;}
+  if(!staffId){alert('Please select an employee.');return;}
+  if(!serviceId){alert('Please select a service.');return;}
+  if(!date||!time){alert('Please choose date and time.');return;}
+
+  // make sure client has contact details
+  const ok = await ensureClientHasContact(clientId);
+  if (!ok) return;
+
+  const localDateTime = new Date(`${date}T${time}:00`);
+
+  // check availability (appointments + blocks)
+  const availability = await checkStaffAvailability(staffId, serviceId, localDateTime);
+  if (!availability.ok) {
+    if (availability.reason === 'blocked') {
+      alert('This time is blocked for this staff member (break / vacation). Please choose another time.');
+    } else if (availability.reason === 'busy') {
+      alert('This staff member already has another appointment in this time range.');
+    } else {
+      alert('Could not check availability. Please try again.');
+    }
+    return;
+  }
+
+  const startIso = localDateTime.toISOString();
+  showLoading('Saving appointment…');
+  const {error} = await supabaseClient.from('appointments').insert([{
+    client_id: Number(clientId),
+    service_id: Number(serviceId),
+    staff_id:   Number(staffId),
+    start_datetime: startIso
+  }]);
+  hideLoading();
+  if(error){alert('Error creating appointment');return;}
+
+  document.getElementById('appointmentDate').value='';
+  document.getElementById('appointmentTime').value='';
+
+  await refreshAllAppointments();
+  buildClientStats();
+  applyCurrentFilter();
+  renderCalendarIfNeeded();
+  playBeep(850,.12);
+  showToast('Appointment saved');
+}
+
+/* -------- Smart finder -------- */
+function handleFindSlots(){
+  const serviceId = document.getElementById('finderService').value;
+  const staffId   = document.getElementById('finderStaff').value;
+  const mode      = document.getElementById('finderStartMode').value;
+  const custom    = document.getElementById('finderStartDate').value;
+  const timePref  = document.getElementById('finderTimePref').value;
+  const div       = document.getElementById('finderResults');
+
+  if(!serviceId){ alert('Please choose a service.'); return; }
+  if(!staffId){   alert('Please choose an employee.'); return; }
+
+  let startDate = new Date();
+  startDate.setHours(0,0,0,0);
+
+  if(mode === '3w'){
+    startDate.setDate(startDate.getDate() + 21);
+  }else if(mode === '4w'){
+    startDate.setDate(startDate.getDate() + 28);
+  }else if(mode === 'custom'){
+    if(!custom){ alert('Please pick a custom date.'); return; }
+    startDate = new Date(custom+'T00:00:00');
+  }
+
+  const results = findNextSlotsLocal(serviceId, staffId, startDate, timePref, 5);
+  lastFinderResults = results;
+
+  if(!results.length){
+    div.style.color='var(--text-muted)';
+    div.innerHTML='No free slots found in the next 60 days for this configuration.';
+    return;
+  }
+
+  let html = '<div style="display:flex;flex-direction:column;gap:6px;">';
+  results.forEach((slot,idx)=>{
+    const dateLabel = slot.start.toLocaleDateString(undefined,{
+      weekday:'short',day:'numeric',month:'short',year:'numeric'
+    });
+    const timeLabel = slot.start.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    html += `
+      <div style="display:flex;justify-content:space-between;align-items:center;border:1px solid #e5e7eb;border-radius:10px;padding:6px 8px;background:#fafafa;">
+        <div>
+          <div style="font-size:13px;font-weight:600;">${dateLabel}</div>
+          <div style="font-size:12px;color:var(--text-muted);">${timeLabel} (${slot.duration} min)</div>
+        </div>
+        <div style="display:flex;gap:4px;">
+          <button class="btn-sm" onclick="applyFinderSlot(${idx})">Use</button>
+          <button class="btn-sm" onclick="openDayModal('${slot.dateKey}')">Day</button>
+        </div>
+      </div>
+    `;
+  });
+  html += '</div>';
+  div.style.color='inherit';
+  div.innerHTML = html;
+}
+
+function findNextSlotsLocal(serviceId, staffId, startDate, timePref, maxSlots){
+  const svc = services.find(s=>String(s.id)===String(serviceId));
+  if(!svc || !svc.duration_minutes) return [];
+  const duration = Number(svc.duration_minutes);
+
+  const slots=[];
+  const maxDays = 60;
+  const startDay = new Date(startDate);
+  startDay.setHours(0,0,0,0);
+  const now = new Date();
+
+  for(let d=0; d<maxDays && slots.length<maxSlots; d++){
+    const day = new Date(startDay);
+    day.setDate(startDay.getDate()+d);
+
+    let dayStartHour = WORK_START_HOUR;
+    let dayEndHour   = WORK_END_HOUR;
+
+    if(timePref==='morning'){ dayStartHour=9; dayEndHour=12; }
+    else if(timePref==='afternoon'){ dayStartHour=12; dayEndHour=17; }
+    else if(timePref==='evening'){ dayStartHour=17; dayEndHour=20; }
+
+    const earliestMin = dayStartHour*60;
+    const latestMin   = Math.min(dayEndHour*60, WORK_END_HOUR*60) - duration;
+
+    if(latestMin < earliestMin) continue;
+
+    for(let m = earliestMin; m<=latestMin && slots.length<maxSlots; m += SLOT_STEP_MIN){
+      const h = Math.floor(m/60);
+      const mm = m % 60;
+      const start = new Date(day);
+      start.setHours(h,mm,0,0);
+      const end = new Date(start.getTime() + duration*60000);
+
+      // skip past times for "today"
+      if(start < now) continue;
+
+      if(isFreeSlotLocal(staffId, start, end)){
+        slots.push({
+          start,
+          end,
+          duration,
+          dateKey: toDateKeyFromDate(start),
+          time24: toTimeInputFromDate(start),
+          staffId,
+          serviceId
+        });
+      }
+    }
+  }
+  return slots;
+}
+
+function isFreeSlotLocal(staffId, start, end){
+  const sid = Number(staffId);
+
+  // appointments
+  for(const a of allAppointments){
+    if(!a.staffId || Number(a.staffId)!==sid) continue;
+
+    let aEnd = a.endDate;
+    if (!aEnd) {
+      const svcA = services.find(s => String(s.id) === String(a.serviceId));
+      const durA = svcA?.duration_minutes ? Number(svcA.duration_minutes) : 0;
+      aEnd = new Date(a.startDate.getTime() + durA * 60000);
+    }
+
+    if(a.startDate < end && aEnd > start) return false;
+  }
+
+  // blocks (staff-specific or all staff)
+  for(const b of blocks){
+    if(b.staffId && Number(b.staffId)!==sid) continue;
+    if(b.startDate < end && b.endDate > start) return false;
+  }
+  return true;
+}
+
+function applyFinderSlot(idx){
+  const slot = lastFinderResults[idx];
+  if(!slot) return;
+  // set service & staff to match
+  document.getElementById('serviceSelect').value = String(slot.serviceId);
+  document.getElementById('staffSelect').value   = String(slot.staffId);
+  // fill date/time in booking form
+  document.getElementById('appointmentDate').value = slot.dateKey;
+  document.getElementById('appointmentTime').value = slot.time24;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  showToast('Slot applied to booking form');
+}
+
       /* -------- Date helpers -------- */
       function toDateKeyFromDate(d){const y=d.getFullYear();const m=String(d.getMonth()+1).padStart(2,'0');const day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`;}
       function toTimeInputFromDate(d){const h=String(d.getHours()).padStart(2,'0');const m=String(d.getMinutes()).padStart(2,'0');return `${h}:${m}`;}
@@ -639,7 +890,7 @@
       }
 
       /* -------- Availability check (used for create + move) -------- */
-      async function checkStaffAvailability(staffId, serviceId, localStart, excludeId=null) {
+      async function (staffId, serviceId, localStart, excludeId=null) {
         const service = services.find(s => String(s.id) === String(serviceId));
         if (!service || !service.duration_minutes) return { ok: true };
 
@@ -693,7 +944,7 @@
         const ok=await ensureClientHasContact(clientId); if(!ok) return;
 
         const localDateTime=new Date(`${date}T${time}:00`);
-        const availability = await checkStaffAvailability(staffId, serviceId, localDateTime);
+        const availability = await (staffId, serviceId, localDateTime);
         if (!availability.ok) {
           if (availability.reason==='blocked') alert('This time is blocked for this staff member (break / vacation). Please choose another time.');
           else if (availability.reason==='busy') alert('This staff member already has another appointment in this time range.');
@@ -1298,5 +1549,6 @@
     </script>
   </body>
 </html>
+
 
 
