@@ -455,6 +455,8 @@
       }
 
       /* -------- Availability check (used for create + move) -------- */
+
+/* -------- Availability check (used for create + move) -------- */
 async function checkStaffAvailability(staffId, serviceId, localStart, excludeId = null) {
   const service = services.find(s => String(s.id) === String(serviceId));
   if (!service || !service.duration_minutes) {
@@ -1522,6 +1524,7 @@ function applyFinderSlot(idx){
     </script>
   </body>
 </html>
+
 
 
 
