@@ -221,58 +221,63 @@
           </div>
 
           <!-- NEW: smart availability finder -->
-          <div class="panel">
-            <div class="panel-header">
-              <h2>Find next free slot</h2>
-            </div>
+<!-- NEW: smart availability finder (collapsible) -->
+<div class="panel">
+  <div class="panel-header">
+    <h2>Find next free slot</h2>
+    <button class="btn-link" id="finderToggleBtn" onclick="toggleFinderPanel()">Show</button>
+  </div>
 
-            <div class="field-row">
-              <div class="field">
-                <label for="finderService">Service</label>
-                <select id="finderService"></select>
-              </div>
-              <div class="field">
-                <label for="finderStaff">Employee</label>
-                <select id="finderStaff"></select>
-              </div>
-            </div>
+  <div id="finderPanelBody" style="display:none;">
+    <div class="field-row">
+      <div class="field">
+        <label for="finderService">Service</label>
+        <select id="finderService"></select>
+      </div>
+      <div class="field">
+        <label for="finderStaff">Employee</label>
+        <select id="finderStaff"></select>
+      </div>
+    </div>
 
-            <div class="field-row">
-              <div class="field">
-                <label for="finderStartMode">Start from</label>
-                <select id="finderStartMode">
-                  <option value="today">Today</option>
-                  <option value="3w">In 3 weeks</option>
-                  <option value="4w">In 4 weeks</option>
-                  <option value="custom">Custom date</option>
-                </select>
-              </div>
-              <div class="field">
-                <label for="finderStartDate">Custom date</label>
-                <input type="date" id="finderStartDate" />
-              </div>
-            </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="finderStartMode">Start from</label>
+        <select id="finderStartMode">
+          <option value="today">Today</option>
+          <option value="3w">In 3 weeks</option>
+          <option value="4w">In 4 weeks</option>
+          <option value="custom">Custom date</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="finderStartDate">Custom date</label>
+        <input type="date" id="finderStartDate" />
+      </div>
+    </div>
 
-            <div class="field-row">
-              <div class="field">
-                <label for="finderTimePref">Time of day</label>
-                <select id="finderTimePref">
-                  <option value="any">Any time</option>
-                  <option value="morning">Morning (09–12)</option>
-                  <option value="afternoon">Afternoon (12–17)</option>
-                  <option value="evening">Evening (17–20)</option>
-                </select>
-              </div>
-              <div class="field">
-                <label>&nbsp;</label>
-                <button class="btn primary" style="width:100%;" onclick="handleFindSlots()">Find next slots</button>
-              </div>
-            </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="finderTimePref">Time of day</label>
+        <select id="finderTimePref">
+          <option value="any">Any time</option>
+          <option value="morning">Morning (09–12)</option>
+          <option value="afternoon">Afternoon (12–17)</option>
+          <option value="evening">Evening (17–20)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>&nbsp;</label>
+        <button class="btn primary" style="width:100%;" onclick="handleFindSlots()">Find next slots</button>
+      </div>
+    </div>
 
-            <div id="finderResults" style="font-size:12px; margin-top:6px; color:var(--text-muted);">
-              No search yet.
-            </div>
-          </div>
+    <div id="finderResults" style="font-size:12px; margin-top:6px; color:var(--text-muted);">
+      No search yet.
+    </div>
+  </div>
+</div>
+
 
           <!-- New Client -->
           <div class="panel" id="newClientPanel" style="display:none;">
@@ -458,6 +463,17 @@
         const e=block.endDate.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',timeZone:'Europe/Malta'});
         return `${s}–${e}`;
       }
+
+      function toggleFinderPanel(){
+  const body = document.getElementById('finderPanelBody');
+  const btn  = document.getElementById('finderToggleBtn');
+  if(!body || !btn) return;
+
+  const isHidden = (body.style.display === 'none' || body.style.display === '');
+  body.style.display = isHidden ? 'block' : 'none';
+  btn.textContent = isHidden ? 'Hide' : 'Show';
+}
+
 
       /* -------- Data loading -------- */
       async function loadClients(){
@@ -1282,3 +1298,4 @@
     </script>
   </body>
 </html>
+
